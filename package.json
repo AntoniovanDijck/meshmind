@@ -1,0 +1,60 @@
+{
+  "name": "meshmind",
+  "version": "1.0.0",
+  "description": "MeshMind — a single MCP server that merges local codebase mapping, recency research, and token compression for AI agents.",
+  "type": "module",
+  "bin": {
+    "meshmind": "build/server.js"
+  },
+  "main": "build/server.js",
+  "files": [
+    "build",
+    "README.md",
+    "LICENSE",
+    "CREDITS.md"
+  ],
+  "scripts": {
+    "build": "tsc && chmod +x build/server.js",
+    "start": "node build/server.js",
+    "test": "node build/test-unit.js && node build/test-client.js",
+    "test:unit": "node build/test-unit.js",
+    "test:integration": "node build/test-client.js",
+    "test:network": "RUN_NETWORK_TESTS=1 node build/test-client.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "llm",
+    "context",
+    "compression",
+    "codebase",
+    "ast",
+    "research"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/AntoniovanDijck/meshmind#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AntoniovanDijck/meshmind.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AntoniovanDijck/meshmind/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@ast-grep/lang-go": "^0.0.6",
+    "@ast-grep/lang-python": "^0.0.6",
+    "@ast-grep/lang-rust": "^0.0.7",
+    "@ast-grep/napi": "^0.43.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "gpt-tokenizer": "^3.4.0",
+    "typescript": "^6.0.3",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3"
+  }
+}

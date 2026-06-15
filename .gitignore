@@ -1,0 +1,20 @@
+# dependencies & build output
+node_modules/
+build/
+*.log
+
+# OS / editor cruft
+.DS_Store
+.idea/
+.vscode/
+
+# Reference material — the upstream projects MeshMind is conceptually derived
+# from are kept locally for reference but are NOT part of this repo. They have
+# their own git history and licenses. See CREDITS.md.
+/graphify/
+/headroom/
+/last30days-skill/
+/contextflow/
+
+# local agent/editor config
+.claude/
