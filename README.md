@@ -72,26 +72,15 @@ suite is deterministic and CI-safe.
 
 ## Install in an MCP client
 
-First clone & build, then point your client at the built server:
-
-```bash
-git clone https://github.com/AntoniovanDijck/meshmind.git
-cd meshmind
-npm install && npm run build
-```
-
-This produces the runnable server at `build/server.js`. In the snippets below,
-replace `/ABS/PATH/TO/meshmind` with the absolute path where you cloned it
-(run `pwd` in the repo to get it).
-
-MeshMind speaks stdio, so any MCP-compatible client works. The command is always
-the same — `node /ABS/PATH/TO/meshmind/build/server.js` — only the config
+MeshMind is on npm: <https://www.npmjs.com/package/meshmind>. No clone or build
+needed — `npx` fetches and runs it. MeshMind speaks stdio, so any MCP-compatible
+client works; the command is always `npx -y meshmind` and only the config
 location/format differs per client.
 
 **Claude Code** (CLI — registers it for you):
 
 ```bash
-claude mcp add meshmind -- node /ABS/PATH/TO/meshmind/build/server.js
+claude mcp add meshmind -- npx -y meshmind
 ```
 
 **Cursor** — `~/.cursor/mcp.json` (or `.cursor/mcp.json` in a project):
@@ -99,7 +88,7 @@ claude mcp add meshmind -- node /ABS/PATH/TO/meshmind/build/server.js
 ```json
 {
   "mcpServers": {
-    "meshmind": { "command": "node", "args": ["/ABS/PATH/TO/meshmind/build/server.js"] }
+    "meshmind": { "command": "npx", "args": ["-y", "meshmind"] }
   }
 }
 ```
@@ -110,7 +99,7 @@ claude mcp add meshmind -- node /ABS/PATH/TO/meshmind/build/server.js
 ```json
 {
   "mcpServers": {
-    "meshmind": { "command": "node", "args": ["/ABS/PATH/TO/meshmind/build/server.js"] }
+    "meshmind": { "command": "npx", "args": ["-y", "meshmind"] }
   }
 }
 ```
@@ -120,7 +109,7 @@ claude mcp add meshmind -- node /ABS/PATH/TO/meshmind/build/server.js
 ```json
 {
   "servers": {
-    "meshmind": { "type": "stdio", "command": "node", "args": ["/ABS/PATH/TO/meshmind/build/server.js"] }
+    "meshmind": { "type": "stdio", "command": "npx", "args": ["-y", "meshmind"] }
   }
 }
 ```
@@ -128,6 +117,19 @@ claude mcp add meshmind -- node /ABS/PATH/TO/meshmind/build/server.js
 Any other MCP host (Codex, Gemini CLI, Windsurf, Zed, …) uses the same
 `command` + `args` pair in its own config format. See
 [`mcp.example.json`](mcp.example.json) for the canonical block.
+
+Prefer a pinned global binary? `npm i -g meshmind`, then use `meshmind` as the
+command instead of `npx -y meshmind`.
+
+### From source (for development)
+
+```bash
+git clone https://github.com/AntoniovanDijck/meshmind.git
+cd meshmind
+npm install && npm run build   # runnable server at build/server.js
+```
+
+Then point the client at `node /ABS/PATH/TO/meshmind/build/server.js`.
 
 ## Architecture
 

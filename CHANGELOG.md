@@ -6,15 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Added
-
-- ESLint (flat config) + Prettier with `lint` / `format` / `format:check`
-  scripts, enforced in CI.
-- `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and this changelog.
+_Nothing yet._
 
 ## [1.0.0] - 2026-06-15
 
-Initial release — a single MCP server merging three context-engineering pillars.
+Initial public release — [`meshmind` on npm](https://www.npmjs.com/package/meshmind).
+A single MCP server merging three context-engineering pillars.
 
 ### Added
 
@@ -37,6 +34,8 @@ Initial release — a single MCP server merging three context-engineering pillar
 - Deterministic offline test suite plus opt-in live network tests, GitHub
   Actions CI on Node 18/20/22, MIT license, attribution (`CREDITS.md`), and a
   security policy (`SECURITY.md`).
+- ESLint (flat config) + Prettier with `lint` / `format` / `format:check`
+  scripts, enforced in CI; `CONTRIBUTING.md` and `CODE_OF_CONDUCT.md`.
 
 [Unreleased]: https://github.com/AntoniovanDijck/meshmind/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/AntoniovanDijck/meshmind/releases/tag/v1.0.0
