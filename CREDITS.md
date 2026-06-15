@@ -9,9 +9,9 @@ projects, that lineage is noted in the relevant source file's header comment.
 
 | Pillar in MeshMind | Inspired by | Upstream license |
 |--------------------|-------------|------------------|
-| `scan_local_codebase` / `export_codebase_graph` — codebase mapping, dependency/call graph, clustering, confidence labels | **graphify** | MIT |
-| `get_optimized_context` / `retrieve_context` / `context_stats` — context compression, reversible cache (CCR), compress/retrieve/stats surface | **headroom** | Apache-2.0 |
-| `research_last_30_days` — recency research, keyless sources, fail-soft fetching | **last30days-skill** | MIT |
+| `scan_local_codebase` / `export_codebase_graph` — codebase mapping, dependency/call graph, clustering, confidence labels | [**graphify**](https://github.com/safishamsi/graphify) | MIT |
+| `get_optimized_context` / `retrieve_context` / `context_stats` — context compression, reversible cache (CCR), compress/retrieve/stats surface | [**headroom**](https://github.com/chopratejas/headroom) | Apache-2.0 |
+| `research_last_30_days` — recency research, keyless sources, fail-soft fetching | [**last30days-skill**](https://github.com/mvanhorn/last30days-skill) | MIT |
 
 ## License compatibility
 

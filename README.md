@@ -232,6 +232,8 @@ It meshes three separate context tools into one mind for your agent. 🕸️🧠
 ## Credits & License
 
 MeshMind is MIT-licensed. Its three pillars are *conceptually* derived from
-[graphify](https://github.com/), [headroom](https://github.com/), and
-[last30days-skill](https://github.com/) — see [`CREDITS.md`](CREDITS.md) for full
-attribution. Contributions welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+[graphify](https://github.com/safishamsi/graphify),
+[headroom](https://github.com/chopratejas/headroom), and
+[last30days-skill](https://github.com/mvanhorn/last30days-skill) — see
+[`CREDITS.md`](CREDITS.md) for full attribution. Contributions welcome — see
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
