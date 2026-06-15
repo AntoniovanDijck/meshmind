@@ -21,12 +21,7 @@ import { z } from "zod";
 import { promises as fs } from "node:fs";
 
 import { crush, retrieve, stats, countTokens, CrushMode, Algorithm } from "./crusher.js";
-import {
-  scanCodebase,
-  renderMapSummary,
-  exportMermaid,
-  exportGraphJson,
-} from "./mapper.js";
+import { scanCodebase, renderMapSummary, exportMermaid, exportGraphJson } from "./mapper.js";
 import {
   research,
   researchToText,
@@ -38,7 +33,15 @@ import {
 const server = new McpServer({ name: "meshmind", version: "1.0.0" });
 
 const SOURCE_ENUM = ALL_SOURCES as [Source, ...Source[]];
-const ALGO_ENUM = ["strip", "whitespace", "line-dedup", "json-min", "truncate", "stopwords", "summarize"] as const;
+const ALGO_ENUM = [
+  "strip",
+  "whitespace",
+  "line-dedup",
+  "json-min",
+  "truncate",
+  "stopwords",
+  "summarize",
+] as const;
 
 function textContent(text: string) {
   return { content: [{ type: "text" as const, text }] };
@@ -124,8 +127,16 @@ server.registerTool(
     inputSchema: {
       topic: z.string().describe("Topic or query to research."),
       windowDays: z.number().int().positive().optional().describe("Trailing window (default 30)."),
-      sources: z.array(z.enum(SOURCE_ENUM)).optional().describe("Subset of sources (default: all)."),
-      perSource: z.number().int().positive().optional().describe("Max items per source (default 10)."),
+      sources: z
+        .array(z.enum(SOURCE_ENUM))
+        .optional()
+        .describe("Subset of sources (default: all)."),
+      perSource: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Max items per source (default 10)."),
       compress: z.boolean().optional().describe("Pipe output through get_optimized_context."),
     },
   },
@@ -165,8 +176,14 @@ server.registerTool(
     inputSchema: {
       text: z.string().optional().describe("Raw text/code/HTML to compress."),
       filePath: z.string().optional().describe("Local file to read and compress."),
-      mode: z.enum(["code", "web", "auto"]).optional().describe("Compression regime (default auto)."),
-      algorithms: z.array(z.enum(ALGO_ENUM)).optional().describe("Override the algorithm pipeline."),
+      mode: z
+        .enum(["code", "web", "auto"])
+        .optional()
+        .describe("Compression regime (default auto)."),
+      algorithms: z
+        .array(z.enum(ALGO_ENUM))
+        .optional()
+        .describe("Override the algorithm pipeline."),
       maxLines: z.number().int().positive().optional().describe("truncate: line budget."),
       summarize: z
         .boolean()
@@ -187,8 +204,11 @@ server.registerTool(
 
     // Baseline crush. If summarize requested, append extractive summarize as the
     // guaranteed local result.
-    const algos = (algorithms as Algorithm[] | undefined) ??
-      (summarize ? ["strip", "whitespace", "line-dedup", "json-min", "summarize"] as Algorithm[] : undefined);
+    const algos =
+      (algorithms as Algorithm[] | undefined) ??
+      (summarize
+        ? (["strip", "whitespace", "line-dedup", "json-min", "summarize"] as Algorithm[])
+        : undefined);
     const r = crush(input, { mode: (mode ?? "auto") as CrushMode, algorithms: algos, maxLines });
 
     let body = r.text;

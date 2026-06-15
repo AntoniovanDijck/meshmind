@@ -21,7 +21,12 @@ import { encode } from "gpt-tokenizer";
 
 export type CrushMode = "code" | "web" | "auto";
 export type Algorithm =
-  | "strip" | "whitespace" | "line-dedup" | "json-min" | "truncate" | "stopwords"
+  | "strip"
+  | "whitespace"
+  | "line-dedup"
+  | "json-min"
+  | "truncate"
+  | "stopwords"
   | "summarize";
 
 export interface CrushOptions {
@@ -38,7 +43,7 @@ export interface CrushOptions {
 }
 
 export interface CrushResult {
-  ref: string;                 // content ref for retrieve()
+  ref: string; // content ref for retrieve()
   text: string;
   mode: "code" | "web";
   algorithms: Algorithm[];
@@ -102,8 +107,15 @@ export function crushWeb(raw: string): string {
   out = out.replace(/<[^>]+>/g, " ");
 
   const entities: Record<string, string> = {
-    "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"',
-    "&#39;": "'", "&apos;": "'", "&nbsp;": " ", "&mdash;": "—", "&ndash;": "–",
+    "&amp;": "&",
+    "&lt;": "<",
+    "&gt;": ">",
+    "&quot;": '"',
+    "&#39;": "'",
+    "&apos;": "'",
+    "&nbsp;": " ",
+    "&mdash;": "—",
+    "&ndash;": "–",
   };
   out = out.replace(/&[a-z#0-9]+;/gi, (m) => entities[m.toLowerCase()] ?? " ");
 
@@ -118,7 +130,10 @@ export function crushWeb(raw: string): string {
 
 /* ---- algorithm: whitespace --------------------------------------------- */
 function collapseWhitespace(text: string): string {
-  return text.replace(/ ?\n ?/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  return text
+    .replace(/ ?\n ?/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 /* ---- algorithm: line-dedup --------------------------------------------- */
@@ -172,19 +187,58 @@ function minifyJson(text: string): string {
  * via the cache.
  */
 const STOPWORDS = new Set([
-  "the", "a", "an", "of", "to", "in", "for", "and", "or", "but", "is", "are",
-  "was", "were", "be", "been", "being", "on", "at", "by", "with", "as", "that",
-  "this", "these", "those", "it", "its", "from", "into", "than", "then", "so",
-  "such", "very", "just", "also", "about", "over", "out", "up", "down",
+  "the",
+  "a",
+  "an",
+  "of",
+  "to",
+  "in",
+  "for",
+  "and",
+  "or",
+  "but",
+  "is",
+  "are",
+  "was",
+  "were",
+  "be",
+  "been",
+  "being",
+  "on",
+  "at",
+  "by",
+  "with",
+  "as",
+  "that",
+  "this",
+  "these",
+  "those",
+  "it",
+  "its",
+  "from",
+  "into",
+  "than",
+  "then",
+  "so",
+  "such",
+  "very",
+  "just",
+  "also",
+  "about",
+  "over",
+  "out",
+  "up",
+  "down",
 ]);
 function dropStopwords(text: string): string {
   return text
     .split("\n")
     .map((line) => {
       if (/[{};]|=>/.test(line)) return line; // looks like code — leave intact
-      return line.replace(/\b[A-Za-z]+\b/g, (w) =>
-        STOPWORDS.has(w.toLowerCase()) ? "" : w,
-      ).replace(/ {2,}/g, " ").replace(/ +([.,;:!?])/g, "$1");
+      return line
+        .replace(/\b[A-Za-z]+\b/g, (w) => (STOPWORDS.has(w.toLowerCase()) ? "" : w))
+        .replace(/ {2,}/g, " ")
+        .replace(/ +([.,;:!?])/g, "$1");
     })
     .join("\n");
 }
@@ -219,18 +273,24 @@ function summarizeExtractive(text: string, ratio: number): string {
   const scored = sentences.map((s, i) => {
     const words = s.toLowerCase().match(/[a-z0-9]+/g) ?? [];
     const content = words.filter((w) => w.length >= 3 && !STOPWORDS.has(w));
-    const freqScore = content.reduce((a, w) => a + (freq.get(w) ?? 0) / maxFreq, 0) /
-      Math.max(1, content.length);
-    const positionBonus = i < 2 ? 0.25 : 0;          // lead sentences matter
+    const freqScore =
+      content.reduce((a, w) => a + (freq.get(w) ?? 0) / maxFreq, 0) / Math.max(1, content.length);
+    const positionBonus = i < 2 ? 0.25 : 0; // lead sentences matter
     const lengthPenalty = words.length < 4 ? -0.3 : 0; // skip fragments
     return { i, s, score: freqScore + positionBonus + lengthPenalty };
   });
 
   const keep = Math.max(3, Math.round(sentences.length * ratio));
   const chosen = new Set(
-    [...scored].sort((a, b) => b.score - a.score).slice(0, keep).map((x) => x.i),
+    [...scored]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, keep)
+      .map((x) => x.i),
   );
-  return scored.filter((x) => chosen.has(x.i)).map((x) => x.s).join(" ");
+  return scored
+    .filter((x) => chosen.has(x.i))
+    .map((x) => x.s)
+    .join(" ");
 }
 
 /* ---- algorithm: truncate ----------------------------------------------- */
@@ -244,7 +304,11 @@ function truncateKeep(text: string, maxLines: number, keepFirst: number, keepLas
 }
 
 /* ---- reversible store + stats ------------------------------------------ */
-interface StoreEntry { original: string; mode: "code" | "web"; at: string; }
+interface StoreEntry {
+  original: string;
+  mode: "code" | "web";
+  at: string;
+}
 
 /**
  * Bounded LRU cache of originals for reversible retrieval. A Map preserves
@@ -256,10 +320,10 @@ const CACHE_MAX = Math.max(1, Number(process.env.MESHMIND_CACHE_MAX) || 500);
 const STORE = new Map<string, StoreEntry>();
 
 function cacheSet(ref: string, entry: StoreEntry): void {
-  if (STORE.has(ref)) STORE.delete(ref);        // refresh recency
+  if (STORE.has(ref)) STORE.delete(ref); // refresh recency
   STORE.set(ref, entry);
   while (STORE.size > CACHE_MAX) {
-    const oldest = STORE.keys().next().value;   // first = least recently used
+    const oldest = STORE.keys().next().value; // first = least recently used
     if (oldest === undefined) break;
     STORE.delete(oldest);
   }
@@ -269,7 +333,9 @@ const STATS = {
   calls: 0,
   originalTokens: 0,
   crushedTokens: 0,
-  get savedTokens() { return this.originalTokens - this.crushedTokens; },
+  get savedTokens() {
+    return this.originalTokens - this.crushedTokens;
+  },
   get savedPercent() {
     return this.originalTokens > 0
       ? Math.round((this.savedTokens / this.originalTokens) * 1000) / 10
@@ -309,8 +375,7 @@ export function stats(): CrusherStats {
 /* ---- main pipeline ------------------------------------------------------ */
 export function crush(input: string, options: CrushMode | CrushOptions = "auto"): CrushResult {
   const opts: CrushOptions = typeof options === "string" ? { mode: options } : options;
-  const mode: "code" | "web" =
-    !opts.mode || opts.mode === "auto" ? detectMode(input) : opts.mode;
+  const mode: "code" | "web" = !opts.mode || opts.mode === "auto" ? detectMode(input) : opts.mode;
   const algos = opts.algorithms ?? DEFAULT_ALGOS;
   const reversible = opts.reversible !== false;
 
@@ -330,12 +395,7 @@ export function crush(input: string, options: CrushMode | CrushOptions = "auto")
         text = minifyJson(text);
         break;
       case "truncate":
-        text = truncateKeep(
-          text,
-          opts.maxLines ?? 200,
-          opts.keepFirst ?? 40,
-          opts.keepLast ?? 40,
-        );
+        text = truncateKeep(text, opts.maxLines ?? 200, opts.keepFirst ?? 40, opts.keepLast ?? 40);
         break;
       case "stopwords":
         text = dropStopwords(text);

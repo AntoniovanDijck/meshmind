@@ -1,0 +1,6 @@
+build/
+node_modules/
+graphify/
+headroom/
+last30days-skill/
+package-lock.json

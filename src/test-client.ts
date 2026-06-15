@@ -34,8 +34,12 @@ async function main() {
     "six tools registered",
     names.length >= 6 &&
       [
-        "context_stats", "export_codebase_graph", "get_optimized_context",
-        "research_last_30_days", "retrieve_context", "scan_local_codebase",
+        "context_stats",
+        "export_codebase_graph",
+        "get_optimized_context",
+        "research_last_30_days",
+        "retrieve_context",
+        "scan_local_codebase",
       ].every((n) => names.includes(n)),
   );
 
@@ -55,8 +59,10 @@ export const z = 1;
   const codeRef = (codeOut.match(/ref=(cf_\w+)/) || [])[1] ?? "";
   pass(
     "get_optimized_context strips code comments + returns ref",
-    !codeOut.includes("should vanish") && !codeOut.includes("block comment") &&
-      codeOut.includes("function") && codeRef.startsWith("cf_"),
+    !codeOut.includes("should vanish") &&
+      !codeOut.includes("block comment") &&
+      codeOut.includes("function") &&
+      codeRef.startsWith("cf_"),
     codeOut.split("\n")[0],
   );
 
@@ -74,7 +80,11 @@ export const z = 1;
     arguments: { text: "ERR x\nERR x\nERR x\nok\nok\n", mode: "code", algorithms: ["line-dedup"] },
   });
   const dupOut = firstText(dupRes);
-  pass("line-dedup collapses repeats", dupOut.includes("(x3)") && dupOut.includes("(x2)"), dupOut.split("\n")[0]);
+  pass(
+    "line-dedup collapses repeats",
+    dupOut.includes("(x3)") && dupOut.includes("(x2)"),
+    dupOut.split("\n")[0],
+  );
 
   // --- get_optimized_context (web) ---
   const htmlSample = `<html><head><style>.a{color:red}</style></head>
@@ -86,19 +96,27 @@ export const z = 1;
   const webOut = firstText(webRes);
   pass(
     "get_optimized_context strips HTML boilerplate",
-    webOut.includes("Real & useful content") && !webOut.includes("track()") && !webOut.includes("color:red"),
+    webOut.includes("Real & useful content") &&
+      !webOut.includes("track()") &&
+      !webOut.includes("color:red"),
     webOut.split("\n")[0],
   );
 
   // --- stopwords algorithm (prose filler removal) ---
   const swRes = await client.callTool({
     name: "get_optimized_context",
-    arguments: { text: "This is a summary of the results and it is very useful.", mode: "web", algorithms: ["stopwords"] },
+    arguments: {
+      text: "This is a summary of the results and it is very useful.",
+      mode: "web",
+      algorithms: ["stopwords"],
+    },
   });
   const swOut = firstText(swRes);
   pass(
     "stopwords drops filler words",
-    !/\bthe\b/i.test(swOut.split("\n\n")[1] ?? swOut) && swOut.includes("summary") && swOut.includes("results"),
+    !/\bthe\b/i.test(swOut.split("\n\n")[1] ?? swOut) &&
+      swOut.includes("summary") &&
+      swOut.includes("results"),
     swOut.split("\n")[0],
   );
 
@@ -112,9 +130,12 @@ export const z = 1;
   const allTsAreAst = !!fa && fa[1] === fa[2]; // every .ts file parsed via AST
   pass(
     "scan_local_codebase builds AST graph + analysis",
-    scanOut.includes("crusher.ts") && scanOut.includes("communities=") &&
-      allTsAreAst && scanOut.includes("## Analysis") &&
-      scanOut.includes("Call graph") && scanOut.includes("[EXTRACTED]"),
+    scanOut.includes("crusher.ts") &&
+      scanOut.includes("communities=") &&
+      allTsAreAst &&
+      scanOut.includes("## Analysis") &&
+      scanOut.includes("Call graph") &&
+      scanOut.includes("[EXTRACTED]"),
     scanOut.split("\n")[1],
   );
 
@@ -132,14 +153,18 @@ export const z = 1;
     path.join(fixDir, "svc.go"),
     "package main\nfunc Serve() int { return Compute() }\nfunc Compute() int { return 42 }\n",
   );
-  const pyRes = await client.callTool({ name: "scan_local_codebase", arguments: { path: fixDir, raw: true } });
+  const pyRes = await client.callTool({
+    name: "scan_local_codebase",
+    arguments: { path: fixDir, raw: true },
+  });
   const pyMap = JSON.parse(firstText(pyRes));
   const hasPyCall = pyMap.edges.some(
-    (e: any) => e.relation === "calls" && e.target.includes("helper") && e.confidence === "EXTRACTED",
+    (e: any) =>
+      e.relation === "calls" && e.target.includes("helper") && e.confidence === "EXTRACTED",
   );
-  const goSymbols = pyMap.nodes.filter(
-    (n: any) => n.kind === "symbol" && n.file.endsWith("svc.go"),
-  ).map((n: any) => n.label);
+  const goSymbols = pyMap.nodes
+    .filter((n: any) => n.kind === "symbol" && n.file.endsWith("svc.go"))
+    .map((n: any) => n.label);
   const hasGoSyms = goSymbols.includes("Serve") && goSymbols.includes("Compute");
   pass(
     "ast-grep extracts Python + Go symbols/calls",
@@ -149,9 +174,12 @@ export const z = 1;
   await fs.rm(fixDir, { recursive: true, force: true });
 
   // --- summarize (extractive fallback; sampling unsupported in test client) ---
-  const longProse = Array.from({ length: 8 }, (_, i) =>
-    `Sentence ${i} discusses the omni context server and its compression pipeline in detail.`,
-  ).join(" ") + " The critical fact is that the build passed and all tests are green.";
+  const longProse =
+    Array.from(
+      { length: 8 },
+      (_, i) =>
+        `Sentence ${i} discusses the omni context server and its compression pipeline in detail.`,
+    ).join(" ") + " The critical fact is that the build passed and all tests are green.";
   const sumRes = await client.callTool({
     name: "get_optimized_context",
     arguments: { text: longProse, mode: "web", summarize: true },
@@ -159,8 +187,7 @@ export const z = 1;
   const sumOut = firstText(sumRes);
   pass(
     "summarize reduces prose (extractive fallback)",
-    sumOut.includes("summary=extractive(fallback)") &&
-      sumOut.length < longProse.length,
+    sumOut.includes("summary=extractive(fallback)") && sumOut.length < longProse.length,
     sumOut.split("\n")[0],
   );
 
@@ -170,7 +197,10 @@ export const z = 1;
     arguments: { path: path.join(__dirname, "..", "src"), format: "mermaid" },
   });
   const expOut = firstText(expRes);
-  pass("export_codebase_graph emits Mermaid", expOut.startsWith("graph LR") && expOut.includes("-->"));
+  pass(
+    "export_codebase_graph emits Mermaid",
+    expOut.startsWith("graph LR") && expOut.includes("-->"),
+  );
 
   // --- context_stats ---
   const statRes = await client.callTool({ name: "context_stats", arguments: {} });
@@ -184,32 +214,42 @@ export const z = 1;
   // --- research_last_30_days (live; opt-in via RUN_NETWORK_TESTS=1) ---
   if (!process.env.RUN_NETWORK_TESTS) {
     console.log("⏭️  research_last_30_days skipped (set RUN_NETWORK_TESTS=1 to run live)");
-  } else try {
-    const resRes = await client.callTool({
-      name: "research_last_30_days",
-      arguments: { topic: "model context protocol", sources: ["hackernews", "lobsters"], perSource: 5, compress: true },
-    });
-    const resOut = firstText(resRes);
-    pass(
-      "research_last_30_days returns compressed payload",
-      resOut.includes("compressed research") && resOut.includes("ref=cf_"),
-      resOut.split("\n")[0],
-    );
+  } else
+    try {
+      const resRes = await client.callTool({
+        name: "research_last_30_days",
+        arguments: {
+          topic: "model context protocol",
+          sources: ["hackernews", "lobsters"],
+          perSource: 5,
+          compress: true,
+        },
+      });
+      const resOut = firstText(resRes);
+      pass(
+        "research_last_30_days returns compressed payload",
+        resOut.includes("compressed research") && resOut.includes("ref=cf_"),
+        resOut.split("\n")[0],
+      );
 
-    // entities + themes surface in an uncompressed run
-    const rawResRes = await client.callTool({
-      name: "research_last_30_days",
-      arguments: { topic: "rust programming", sources: ["hackernews", "lobsters", "reddit"], perSource: 6 },
-    });
-    const rawResOut = firstText(rawResRes);
-    pass(
-      "research surfaces entities + fused themes",
-      rawResOut.includes("## Key entities") && rawResOut.includes("## Themes"),
-      (rawResOut.split("\n").find((l) => l.includes("Key entities")) ?? "").slice(0, 40),
-    );
-  } catch (e) {
-    console.log(`⚠️  research_last_30_days skipped (network): ${String((e as Error).message)}`);
-  }
+      // entities + themes surface in an uncompressed run
+      const rawResRes = await client.callTool({
+        name: "research_last_30_days",
+        arguments: {
+          topic: "rust programming",
+          sources: ["hackernews", "lobsters", "reddit"],
+          perSource: 6,
+        },
+      });
+      const rawResOut = firstText(rawResRes);
+      pass(
+        "research surfaces entities + fused themes",
+        rawResOut.includes("## Key entities") && rawResOut.includes("## Themes"),
+        (rawResOut.split("\n").find((l) => l.includes("Key entities")) ?? "").slice(0, 40),
+      );
+    } catch (e) {
+      console.log(`⚠️  research_last_30_days skipped (network): ${String((e as Error).message)}`);
+    }
 
   await client.close();
   console.log(process.exitCode ? "\nSome tests failed.\n" : "\nAll tests passed.\n");

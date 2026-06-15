@@ -9,9 +9,7 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import {
-  crush, retrieve, stats, countTokens, crushCode, crushWeb,
-} from "./crusher.js";
+import { crush, retrieve, stats, countTokens, crushCode, crushWeb } from "./crusher.js";
 import { scanCodebase, exportMermaid } from "./mapper.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -24,7 +22,11 @@ function pass(name: string, ok: boolean, detail = "") {
 
 async function main() {
   // --- tokenizer ---
-  pass("countTokens uses real BPE", countTokens("hello world") === 2, `got ${countTokens("hello world")}`);
+  pass(
+    "countTokens uses real BPE",
+    countTokens("hello world") === 2,
+    `got ${countTokens("hello world")}`,
+  );
   pass("countTokens empty = 0", countTokens("") === 0);
 
   // --- crushCode ---
@@ -35,7 +37,10 @@ async function main() {
   // --- crushWeb ---
   const web = "<style>.x{}</style><nav>n</nav><p>Keep &amp; this</p><script>x()</script>";
   const cw = crushWeb(web);
-  pass("crushWeb strips boilerplate", cw.includes("Keep & this") && !cw.includes("x()") && !cw.includes(".x{"));
+  pass(
+    "crushWeb strips boilerplate",
+    cw.includes("Keep & this") && !cw.includes("x()") && !cw.includes(".x{"),
+  );
 
   // --- reversibility + ref stability ---
   const r1 = crush("// c\nconst a = 1;\n", { mode: "code" });
@@ -51,9 +56,15 @@ async function main() {
   const jm = crush('{"a":  1,  "b": 2}', { algorithms: ["json-min"] });
   pass("json-min minifies", jm.text === '{"a":1,"b":2}');
   const tr = crush(Array.from({ length: 50 }, (_, i) => `line${i}`).join("\n"), {
-    algorithms: ["truncate"], maxLines: 10, keepFirst: 2, keepLast: 2,
+    algorithms: ["truncate"],
+    maxLines: 10,
+    keepFirst: 2,
+    keepLast: 2,
   });
-  pass("truncate elides middle", tr.text.includes("elided") && tr.text.includes("line0") && tr.text.includes("line49"));
+  pass(
+    "truncate elides middle",
+    tr.text.includes("elided") && tr.text.includes("line0") && tr.text.includes("line49"),
+  );
   const sw = crush("the cat sat on the mat", { mode: "web", algorithms: ["stopwords"] });
   pass("stopwords removes filler", !/\bthe\b/.test(sw.text) && sw.text.includes("cat"));
   const sm = crush(
@@ -64,7 +75,10 @@ async function main() {
 
   // --- savings metrics sane ---
   const big = crush("<div>" + "x ".repeat(200) + "</div>", { mode: "web" });
-  pass("savings metrics computed", big.savedPercent >= 0 && big.crushedTokens <= big.originalTokens);
+  pass(
+    "savings metrics computed",
+    big.savedPercent >= 0 && big.crushedTokens <= big.originalTokens,
+  );
 
   // --- LRU cache bound (set env before import won't help; test relative behavior) ---
   const before = stats().cachedRefs;
@@ -76,7 +90,10 @@ async function main() {
   pass("scanCodebase finds files", map.fileCount > 0 && map.astFiles > 0);
   pass("scanCodebase builds edges", map.edges.length > 0);
   pass("scanCodebase clusters", map.analysis.communityCount >= 1);
-  pass("scanCodebase confidence labels", map.edges.some((e) => e.confidence === "EXTRACTED"));
+  pass(
+    "scanCodebase confidence labels",
+    map.edges.some((e) => e.confidence === "EXTRACTED"),
+  );
 
   // --- mapper: ast-grep multi-language (offline, temp fixtures) ---
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mm-unit-"));
@@ -84,8 +101,11 @@ async function main() {
   await fs.writeFile(path.join(dir, "b.rs"), "fn main() { foo(); }\nstruct Cfg { n: i32 }\n");
   const m2 = await scanCodebase(dir);
   const syms = m2.nodes.filter((n) => n.kind === "symbol").map((n) => n.label);
-  pass("ast-grep python+rust symbols", syms.includes("foo") && syms.includes("Bar") && syms.includes("Cfg"),
-    `[${syms.join(",")}]`);
+  pass(
+    "ast-grep python+rust symbols",
+    syms.includes("foo") && syms.includes("Bar") && syms.includes("Cfg"),
+    `[${syms.join(",")}]`,
+  );
   await fs.rm(dir, { recursive: true, force: true });
 
   // --- mermaid export ---

@@ -17,14 +17,32 @@
  */
 
 export type Source =
-  | "hackernews" | "reddit" | "github" | "web"
-  | "lobsters" | "bluesky" | "stackoverflow" | "lemmy"
-  | "devto" | "github_issues" | "mastodon" | "youtube";
+  | "hackernews"
+  | "reddit"
+  | "github"
+  | "web"
+  | "lobsters"
+  | "bluesky"
+  | "stackoverflow"
+  | "lemmy"
+  | "devto"
+  | "github_issues"
+  | "mastodon"
+  | "youtube";
 
 export const ALL_SOURCES: Source[] = [
-  "hackernews", "reddit", "github", "web",
-  "lobsters", "bluesky", "stackoverflow", "lemmy",
-  "devto", "github_issues", "mastodon", "youtube",
+  "hackernews",
+  "reddit",
+  "github",
+  "web",
+  "lobsters",
+  "bluesky",
+  "stackoverflow",
+  "lemmy",
+  "devto",
+  "github_issues",
+  "mastodon",
+  "youtube",
 ];
 
 export interface ResearchItem {
@@ -36,21 +54,21 @@ export interface ResearchItem {
   comments?: number;
   author?: string;
   createdAt?: string;
-  relevance?: number;   // 0..1 token-overlap with topic (set during rerank)
+  relevance?: number; // 0..1 token-overlap with topic (set during rerank)
 }
 
 export interface Theme {
-  label: string;             // representative phrase
+  label: string; // representative phrase
   keywords: string[];
-  sources: Source[];         // distinct sources that surfaced this theme
+  sources: Source[]; // distinct sources that surfaced this theme
   itemCount: number;
-  corroborated: boolean;     // surfaced by >= 2 distinct sources
+  corroborated: boolean; // surfaced by >= 2 distinct sources
 }
 
 export interface Entity {
   term: string;
-  count: number;          // occurrences across items
-  sources: Source[];      // distinct sources mentioning it
+  count: number; // occurrences across items
+  sources: Source[]; // distinct sources mentioning it
 }
 
 export interface ResearchResult {
@@ -60,7 +78,7 @@ export interface ResearchResult {
   sources: Source[];
   itemCount: number;
   items: ResearchItem[];
-  entities: Entity[];     // salient named entities / keywords across results
+  entities: Entity[]; // salient named entities / keywords across results
   themes: Theme[];
   errors: Record<string, string>;
 }
@@ -91,8 +109,11 @@ function daysAgoUnix(days: number): number {
 function stripTags(s: string): string {
   return s
     .replace(/<[^>]+>/g, " ")
-    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"').replace(/&#x27;|&#39;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;|&#39;/g, "'")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -118,7 +139,11 @@ async function enrichHnComments(objectID: string, max = 3): Promise<string> {
   }
 }
 
-async function fetchHackerNews(topic: string, windowDays: number, limit: number): Promise<ResearchItem[]> {
+async function fetchHackerNews(
+  topic: string,
+  windowDays: number,
+  limit: number,
+): Promise<ResearchItem[]> {
   const since = daysAgoUnix(windowDays);
   const params = new URLSearchParams({
     query: topic,
@@ -140,7 +165,8 @@ async function fetchHackerNews(topic: string, windowDays: number, limit: number)
     source: "hackernews" as const,
     title: h.title ?? h.story_title ?? "(untitled)",
     url: h.url ?? `https://news.ycombinator.com/item?id=${h.objectID}`,
-    text: stripTags(h.story_text ?? h.comment_text ?? h.title ?? "") + (enriched.get(h.objectID) ?? ""),
+    text:
+      stripTags(h.story_text ?? h.comment_text ?? h.title ?? "") + (enriched.get(h.objectID) ?? ""),
     score: h.points,
     comments: h.num_comments,
     author: h.author,
@@ -149,9 +175,15 @@ async function fetchHackerNews(topic: string, windowDays: number, limit: number)
 }
 
 /* ---- Reddit (search.json + RSS fallback) -------------------------------- */
-async function fetchRedditJson(topic: string, windowDays: number, limit: number): Promise<ResearchItem[]> {
+async function fetchRedditJson(
+  topic: string,
+  windowDays: number,
+  limit: number,
+): Promise<ResearchItem[]> {
   const params = new URLSearchParams({
-    q: topic, sort: "new", limit: String(limit),
+    q: topic,
+    sort: "new",
+    limit: String(limit),
     t: windowDays <= 7 ? "week" : windowDays <= 31 ? "month" : "year",
     restrict_sr: "false",
   });
@@ -197,7 +229,11 @@ async function fetchRedditRss(topic: string, limit: number): Promise<ResearchIte
   return items;
 }
 
-async function fetchReddit(topic: string, windowDays: number, limit: number): Promise<ResearchItem[]> {
+async function fetchReddit(
+  topic: string,
+  windowDays: number,
+  limit: number,
+): Promise<ResearchItem[]> {
   try {
     const json = await fetchRedditJson(topic, windowDays, limit);
     if (json.length) return json;
@@ -208,7 +244,11 @@ async function fetchReddit(topic: string, windowDays: number, limit: number): Pr
 }
 
 /* ---- GitHub ------------------------------------------------------------- */
-async function fetchGitHub(topic: string, windowDays: number, limit: number): Promise<ResearchItem[]> {
+async function fetchGitHub(
+  topic: string,
+  windowDays: number,
+  limit: number,
+): Promise<ResearchItem[]> {
   const sinceDate = new Date(Date.now() - windowDays * 86_400_000).toISOString().slice(0, 10);
   const q = encodeURIComponent(`${topic} pushed:>=${sinceDate}`);
   const url = `https://api.github.com/search/repositories?q=${q}&sort=updated&order=desc&per_page=${limit}`;
@@ -227,7 +267,10 @@ async function fetchGitHub(topic: string, windowDays: number, limit: number): Pr
 
 /* ---- Web (DuckDuckGo HTML) ---------------------------------------------- */
 async function fetchWeb(topic: string, limit: number): Promise<ResearchItem[]> {
-  const body = await httpGet(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(topic)}`, "text/html");
+  const body = await httpGet(
+    `https://html.duckduckgo.com/html/?q=${encodeURIComponent(topic)}`,
+    "text/html",
+  );
   const items: ResearchItem[] = [];
   const re = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
   let m: RegExpExecArray | null;
@@ -266,7 +309,11 @@ async function fetchLobsters(topic: string, limit: number): Promise<ResearchItem
 }
 
 /* ---- Bluesky (public) --------------------------------------------------- */
-async function fetchBluesky(topic: string, windowDays: number, limit: number): Promise<ResearchItem[]> {
+async function fetchBluesky(
+  topic: string,
+  windowDays: number,
+  limit: number,
+): Promise<ResearchItem[]> {
   const since = new Date(Date.now() - windowDays * 86_400_000).toISOString();
   const url =
     `https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts` +
@@ -285,7 +332,11 @@ async function fetchBluesky(topic: string, windowDays: number, limit: number): P
 }
 
 /* ---- Stack Overflow ----------------------------------------------------- */
-async function fetchStackOverflow(topic: string, windowDays: number, limit: number): Promise<ResearchItem[]> {
+async function fetchStackOverflow(
+  topic: string,
+  windowDays: number,
+  limit: number,
+): Promise<ResearchItem[]> {
   const fromDate = daysAgoUnix(windowDays);
   const url =
     `https://api.stackexchange.com/2.3/search/advanced?order=desc&sort=creation` +
@@ -320,14 +371,19 @@ async function fetchLemmy(topic: string, limit: number): Promise<ResearchItem[]>
 }
 
 /* ---- Dev.to ------------------------------------------------------------- */
-async function fetchDevto(topic: string, windowDays: number, limit: number): Promise<ResearchItem[]> {
+async function fetchDevto(
+  topic: string,
+  windowDays: number,
+  limit: number,
+): Promise<ResearchItem[]> {
   // Dev.to has no full-text search API; pull recent top articles and filter to
   // topic tokens client-side (keyless, stable).
   const url = `https://dev.to/api/articles?per_page=100&top=${windowDays}`;
   const arr: any[] = JSON.parse(await httpGet(url));
   const terms = (topic.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((w) => w.length > 2);
   const match = (a: any) => {
-    const hay = `${a.title ?? ""} ${(a.tag_list ?? []).join(" ")} ${a.description ?? ""}`.toLowerCase();
+    const hay =
+      `${a.title ?? ""} ${(a.tag_list ?? []).join(" ")} ${a.description ?? ""}`.toLowerCase();
     return terms.length === 0 || terms.some((t) => hay.includes(t));
   };
   return (Array.isArray(arr) ? arr : [])
@@ -346,7 +402,11 @@ async function fetchDevto(topic: string, windowDays: number, limit: number): Pro
 }
 
 /* ---- GitHub issues (recent activity) ------------------------------------ */
-async function fetchGitHubIssues(topic: string, windowDays: number, limit: number): Promise<ResearchItem[]> {
+async function fetchGitHubIssues(
+  topic: string,
+  windowDays: number,
+  limit: number,
+): Promise<ResearchItem[]> {
   const sinceDate = new Date(Date.now() - windowDays * 86_400_000).toISOString().slice(0, 10);
   const q = encodeURIComponent(`${topic} in:title,body created:>=${sinceDate}`);
   const url = `https://api.github.com/search/issues?q=${q}&sort=updated&order=desc&per_page=${limit}`;
@@ -364,7 +424,11 @@ async function fetchGitHubIssues(topic: string, windowDays: number, limit: numbe
 }
 
 /* ---- Mastodon (public search on a large instance) ----------------------- */
-async function fetchMastodon(topic: string, windowDays: number, limit: number): Promise<ResearchItem[]> {
+async function fetchMastodon(
+  topic: string,
+  windowDays: number,
+  limit: number,
+): Promise<ResearchItem[]> {
   // Tag timelines are public + keyless. Use the first topic token as the tag.
   const tag = (topic.toLowerCase().match(/[a-z0-9]+/g) ?? ["news"])[0];
   const url = `https://mastodon.social/api/v1/timelines/tag/${encodeURIComponent(tag)}?limit=${limit}`;
@@ -390,7 +454,11 @@ const PIPED_INSTANCES = [
   "https://pipedapi.adminforge.de",
   "https://api.piped.private.coffee",
 ];
-async function fetchYouTube(topic: string, windowDays: number, limit: number): Promise<ResearchItem[]> {
+async function fetchYouTube(
+  topic: string,
+  windowDays: number,
+  limit: number,
+): Promise<ResearchItem[]> {
   let lastErr: unknown;
   for (const base of PIPED_INSTANCES) {
     try {
@@ -398,20 +466,23 @@ async function fetchYouTube(topic: string, windowDays: number, limit: number): P
       const json = JSON.parse(await httpGet(url));
       const cutoff = Date.now() - windowDays * 86_400_000;
       const vids: any[] = json.items ?? json ?? [];
-      return vids
-        .filter((v) => (v.type ?? "stream") === "stream")
-        // uploaded is ms epoch on Piped; -1 when unknown → keep (best-effort).
-        .filter((v) => (v.uploaded ?? -1) === -1 || v.uploaded >= cutoff)
-        .slice(0, limit)
-        .map((v) => ({
-          source: "youtube" as const,
-          title: v.title ?? "(video)",
-          url: v.url?.startsWith("http") ? v.url : `https://www.youtube.com${v.url ?? ""}`,
-          text: stripTags(v.shortDescription ?? v.uploaderName ?? ""),
-          score: v.views,
-          author: v.uploaderName,
-          createdAt: v.uploaded && v.uploaded > 0 ? new Date(v.uploaded).toISOString() : v.uploadedDate,
-        }));
+      return (
+        vids
+          .filter((v) => (v.type ?? "stream") === "stream")
+          // uploaded is ms epoch on Piped; -1 when unknown → keep (best-effort).
+          .filter((v) => (v.uploaded ?? -1) === -1 || v.uploaded >= cutoff)
+          .slice(0, limit)
+          .map((v) => ({
+            source: "youtube" as const,
+            title: v.title ?? "(video)",
+            url: v.url?.startsWith("http") ? v.url : `https://www.youtube.com${v.url ?? ""}`,
+            text: stripTags(v.shortDescription ?? v.uploaderName ?? ""),
+            score: v.views,
+            author: v.uploaderName,
+            createdAt:
+              v.uploaded && v.uploaded > 0 ? new Date(v.uploaded).toISOString() : v.uploadedDate,
+          }))
+      );
     } catch (e) {
       lastErr = e; // try next mirror
     }
@@ -453,7 +524,10 @@ function relevanceScore(topicTokens: Set<string>, item: ResearchItem): number {
 }
 
 function normalizeUrl(u: string): string {
-  return u.replace(/[#?].*$/, "").replace(/\/+$/, "").toLowerCase();
+  return u
+    .replace(/[#?].*$/, "")
+    .replace(/\/+$/, "")
+    .toLowerCase();
 }
 
 function dedupe(items: ResearchItem[]): ResearchItem[] {
@@ -480,10 +554,43 @@ function dedupe(items: ResearchItem[]): ResearchItem[] {
  * Ranks by frequency × source-spread (a term seen across sources scores higher).
  */
 const ENTITY_FILLER = new Set([
-  "the", "this", "that", "these", "those", "introduction", "overview", "guide",
-  "tutorial", "how", "why", "what", "when", "new", "best", "top", "using", "use",
-  "first", "last", "next", "more", "about", "with", "from", "your", "our", "their",
-  "show", "tell", "ask", "update", "release", "version", "part", "post", "article",
+  "the",
+  "this",
+  "that",
+  "these",
+  "those",
+  "introduction",
+  "overview",
+  "guide",
+  "tutorial",
+  "how",
+  "why",
+  "what",
+  "when",
+  "new",
+  "best",
+  "top",
+  "using",
+  "use",
+  "first",
+  "last",
+  "next",
+  "more",
+  "about",
+  "with",
+  "from",
+  "your",
+  "our",
+  "their",
+  "show",
+  "tell",
+  "ask",
+  "update",
+  "release",
+  "version",
+  "part",
+  "post",
+  "article",
 ]);
 
 function extractEntities(items: ResearchItem[], topic: string): Entity[] {
@@ -563,7 +670,8 @@ function fuse(items: ResearchItem[]): { themes: Theme[]; boost: Map<ResearchItem
     const sources = [...new Set(members.map((m) => m.source))];
     const corroborated = sources.length >= 2;
     // Boost every member; corroborated themes boost harder.
-    for (const m of members) boost.set(m, (corroborated ? 0.5 : 0.2) * Math.log2(members.length + 1));
+    for (const m of members)
+      boost.set(m, (corroborated ? 0.5 : 0.2) * Math.log2(members.length + 1));
     const keywords = [...c.keywords].slice(0, 6);
     themes.push({
       label: members[0].title.slice(0, 80),
@@ -574,7 +682,9 @@ function fuse(items: ResearchItem[]): { themes: Theme[]; boost: Map<ResearchItem
     });
   }
   // Corroborated, larger themes first.
-  themes.sort((a, b) => Number(b.corroborated) - Number(a.corroborated) || b.itemCount - a.itemCount);
+  themes.sort(
+    (a, b) => Number(b.corroborated) - Number(a.corroborated) || b.itemCount - a.itemCount,
+  );
   return { themes, boost };
 }
 
@@ -585,13 +695,18 @@ export interface ResearchOptions {
 }
 
 /** Run recency research across sources in parallel; rerank + dedupe; never throws. */
-export async function research(topic: string, options: ResearchOptions = {}): Promise<ResearchResult> {
+export async function research(
+  topic: string,
+  options: ResearchOptions = {},
+): Promise<ResearchResult> {
   const windowDays = options.windowDays ?? 30;
   const sources = options.sources ?? ALL_SOURCES;
   const perSource = options.perSource ?? 10;
 
   const errors: Record<string, string> = {};
-  const settled = await Promise.allSettled(sources.map((s) => FETCHERS[s](topic, windowDays, perSource)));
+  const settled = await Promise.allSettled(
+    sources.map((s) => FETCHERS[s](topic, windowDays, perSource)),
+  );
 
   let items: ResearchItem[] = [];
   settled.forEach((r, i) => {
@@ -636,7 +751,9 @@ export function researchToText(result: ResearchResult): string {
   ];
   if (result.entities.length) {
     lines.push(`## Key entities`);
-    lines.push(result.entities.map((e) => `${e.term}(${e.count}/${e.sources.length}src)`).join(", "));
+    lines.push(
+      result.entities.map((e) => `${e.term}(${e.count}/${e.sources.length}src)`).join(", "),
+    );
     lines.push("");
   }
   if (result.themes.length) {
@@ -652,7 +769,9 @@ export function researchToText(result: ResearchResult): string {
       it.score != null ? `${it.score}pts` : "",
       it.comments != null ? `${it.comments}c` : "",
       it.relevance != null ? `rel=${it.relevance}` : "",
-    ].filter(Boolean).join(" ");
+    ]
+      .filter(Boolean)
+      .join(" ");
     lines.push(`## [${it.source}] ${it.title} ${eng}`.trim());
     lines.push(it.url);
     if (it.createdAt) lines.push(`date: ${it.createdAt}`);

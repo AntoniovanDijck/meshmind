@@ -13,7 +13,11 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 
-export interface Extraction { imports: string[]; symbols: string[]; calls: string[]; }
+export interface Extraction {
+  imports: string[];
+  symbols: string[];
+  calls: string[];
+}
 
 let ready = false;
 let available = false;
@@ -43,10 +47,10 @@ const EXT_TO_LANG: Record<string, string> = {
 
 /** Node kinds per language: [functions/types, calls-field, import scaffolding]. */
 interface LangSpec {
-  declKinds: string[];     // kinds whose `name` field is a declared symbol
-  callKind: string;        // call expression kind
-  callField: string;       // field on the call node holding the callee
-  importKinds: string[];   // statements that contain module specifiers
+  declKinds: string[]; // kinds whose `name` field is a declared symbol
+  callKind: string; // call expression kind
+  callField: string; // field on the call node holding the callee
+  importKinds: string[]; // statements that contain module specifiers
 }
 
 const SPECS: Record<string, LangSpec> = {
@@ -72,7 +76,10 @@ const SPECS: Record<string, LangSpec> = {
 
 /** Last identifier of a dotted/path callee: `a.b.c`/`a::b::c` → `c`. */
 function lastSegment(text: string): string {
-  const parts = text.split(/::|\./).map((s) => s.trim()).filter(Boolean);
+  const parts = text
+    .split(/::|\./)
+    .map((s) => s.trim())
+    .filter(Boolean);
   return parts[parts.length - 1] ?? text;
 }
 

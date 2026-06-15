@@ -14,14 +14,48 @@ import ts from "typescript";
 import { extractAstGrep, supports as astGrepSupports } from "./astgrep.js";
 
 const CODE_EXTENSIONS = new Set([
-  ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
-  ".py", ".go", ".rs", ".java", ".rb", ".php", ".c", ".h", ".cpp", ".hpp",
-  ".cs", ".swift", ".kt", ".scala", ".lua", ".sh", ".vue", ".svelte",
+  ".ts",
+  ".tsx",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+  ".py",
+  ".go",
+  ".rs",
+  ".java",
+  ".rb",
+  ".php",
+  ".c",
+  ".h",
+  ".cpp",
+  ".hpp",
+  ".cs",
+  ".swift",
+  ".kt",
+  ".scala",
+  ".lua",
+  ".sh",
+  ".vue",
+  ".svelte",
 ]);
 
 const IGNORE_DIRS = new Set([
-  "node_modules", ".git", "build", "dist", ".next", "target", "venv", ".venv",
-  "__pycache__", ".cache", "coverage", ".idea", ".vscode", "vendor", "out",
+  "node_modules",
+  ".git",
+  "build",
+  "dist",
+  ".next",
+  "target",
+  "venv",
+  ".venv",
+  "__pycache__",
+  ".cache",
+  "coverage",
+  ".idea",
+  ".vscode",
+  "vendor",
+  "out",
 ]);
 
 const SENSITIVE = [
@@ -42,7 +76,7 @@ export interface FileNode {
 }
 
 export interface GraphNode {
-  id: string;          // `path::symbol` or `path` for file nodes
+  id: string; // `path::symbol` or `path` for file nodes
   label: string;
   kind: "file" | "symbol";
   file: string;
@@ -57,18 +91,18 @@ export interface GraphEdge {
 }
 
 export interface Analysis {
-  godNodes: { id: string; degree: number }[];  // highest fan-in/out
-  orphans: string[];                            // files nothing imports & that import nothing local
-  cycles: string[][];                           // import cycles (file level)
+  godNodes: { id: string; degree: number }[]; // highest fan-in/out
+  orphans: string[]; // files nothing imports & that import nothing local
+  cycles: string[][]; // import cycles (file level)
   communityCount: number;
-  surprises: string[];                          // human-readable observations
+  surprises: string[]; // human-readable observations
 }
 
 export interface CodebaseMap {
   root: string;
   scannedAt: string;
   fileCount: number;
-  astFiles: number;        // files parsed with a real AST (TS/JS) vs. regex
+  astFiles: number; // files parsed with a real AST (TS/JS) vs. regex
   totalLines: number;
   byLanguage: Record<string, number>;
   files: FileNode[];
@@ -147,12 +181,15 @@ function extractAll(patterns: RegExp[], text: string): string[] {
 
 const TS_JS_EXT = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
 
-interface Extraction { imports: string[]; symbols: string[]; calls: string[]; }
+interface Extraction {
+  imports: string[];
+  symbols: string[];
+  calls: string[];
+}
 
 /** Accurate AST extraction for TS/JS via the TypeScript compiler API. */
 function extractTsAst(content: string, ext: string): Extraction {
-  const scriptKind =
-    ext === ".tsx" || ext === ".jsx" ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  const scriptKind = ext === ".tsx" || ext === ".jsx" ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
   const sf = ts.createSourceFile("f" + ext, content, ts.ScriptTarget.Latest, true, scriptKind);
 
   const imports = new Set<string>();
@@ -163,7 +200,11 @@ function extractTsAst(content: string, ext: string): Extraction {
     // imports
     if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
       imports.add(node.moduleSpecifier.text);
-    } else if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+    } else if (
+      ts.isExportDeclaration(node) &&
+      node.moduleSpecifier &&
+      ts.isStringLiteral(node.moduleSpecifier)
+    ) {
       imports.add(node.moduleSpecifier.text);
     } else if (
       ts.isCallExpression(node) &&
@@ -178,7 +219,11 @@ function extractTsAst(content: string, ext: string): Extraction {
     // top-level-ish declarations (any depth — name is what matters for the graph)
     if ((ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) && node.name) {
       symbols.add(node.name.text);
-    } else if (ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node) || ts.isEnumDeclaration(node)) {
+    } else if (
+      ts.isInterfaceDeclaration(node) ||
+      ts.isTypeAliasDeclaration(node) ||
+      ts.isEnumDeclaration(node)
+    ) {
       symbols.add(node.name.text);
     } else if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
       if (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer)) {
@@ -214,7 +259,11 @@ function extractRegex(content: string): Extraction {
   };
 }
 
-interface RawFile extends FileNode { content: string; calls: string[]; ast: boolean; }
+interface RawFile extends FileNode {
+  content: string;
+  calls: string[];
+  ast: boolean;
+}
 
 async function extractFile(full: string, root: string, maxBytes: number): Promise<RawFile | null> {
   let raw: string;
@@ -235,7 +284,12 @@ async function extractFile(full: string, root: string, maxBytes: number): Promis
       ast = true;
     } else if (astGrepSupports(ext)) {
       const g = extractAstGrep(raw, ext);
-      if (g) { ex = g; ast = true; } else { ex = extractRegex(raw); }
+      if (g) {
+        ex = g;
+        ast = true;
+      } else {
+        ex = extractRegex(raw);
+      }
     } else {
       ex = extractRegex(raw);
     }
@@ -262,9 +316,19 @@ function resolveLocalImport(fromFile: string, spec: string, index: Set<string>):
   // the source on disk is `./crusher.ts`. Map JS-family extensions back to TS.
   const tsRemap = base.replace(/\.(js|jsx|mjs|cjs)$/, "");
   const candidates = [
-    base, `${base}.ts`, `${base}.tsx`, `${base}.js`, `${base}.jsx`, `${base}.mjs`,
-    `${base}.py`, `${base}.go`, `${base}.rs`, `${base}/index.ts`, `${base}/index.js`,
-    `${tsRemap}.ts`, `${tsRemap}.tsx`,
+    base,
+    `${base}.ts`,
+    `${base}.tsx`,
+    `${base}.js`,
+    `${base}.jsx`,
+    `${base}.mjs`,
+    `${base}.py`,
+    `${base}.go`,
+    `${base}.rs`,
+    `${base}/index.ts`,
+    `${base}/index.js`,
+    `${tsRemap}.ts`,
+    `${tsRemap}.tsx`,
   ];
   return candidates.find((c) => index.has(c)) ?? null;
 }
@@ -388,7 +452,10 @@ function analyze(
 }
 
 /* ---- main scan ---------------------------------------------------------- */
-export async function scanCodebase(rootInput: string, options: ScanOptions = {}): Promise<CodebaseMap> {
+export async function scanCodebase(
+  rootInput: string,
+  options: ScanOptions = {},
+): Promise<CodebaseMap> {
   const opts: Required<ScanOptions> = {
     maxFiles: options.maxFiles ?? 2000,
     maxFileBytes: options.maxFileBytes ?? 1_000_000,
@@ -444,16 +511,17 @@ export async function scanCodebase(rootInput: string, options: ScanOptions = {})
   // INFERRED for regex-derived calls, AMBIGUOUS when the name is declared in
   // multiple files (resolution is uncertain without full type binding).
   const symbolCounts = new Map<string, number>();
-  for (const n of raw) for (const s of n.symbols) symbolCounts.set(s, (symbolCounts.get(s) ?? 0) + 1);
+  for (const n of raw)
+    for (const s of n.symbols) symbolCounts.set(s, (symbolCounts.get(s) ?? 0) + 1);
 
   for (const n of raw) {
     const pp = toPosix(n.path);
     const own = new Set(n.symbols);
     for (const called of n.calls) {
-      if (own.has(called)) continue;             // local call, no cross-file edge
-      if (called.length < 3) continue;           // too generic
+      if (own.has(called)) continue; // local call, no cross-file edge
+      if (called.length < 3) continue; // too generic
       const ownerId = symbolOwner.get(called);
-      if (!ownerId) continue;                     // not a project symbol
+      if (!ownerId) continue; // not a project symbol
       const multi = (symbolCounts.get(called) ?? 1) > 1;
       edges.push({
         source: pp,
@@ -537,7 +605,8 @@ export function renderMapSummary(map: CodebaseMap): string {
 
 /** Export the file-level dependency graph as a Mermaid diagram. */
 export function exportMermaid(map: CodebaseMap): string {
-  const id = (p: string) => "n" + Math.abs([...p].reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7));
+  const id = (p: string) =>
+    "n" + Math.abs([...p].reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7));
   const lines = ["graph LR"];
   const seen = new Set<string>();
   for (const f of map.files) {
