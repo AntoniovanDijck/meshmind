@@ -1,0 +1,38 @@
+{
+  "name": "meshmind",
+  "version": "1.0.0",
+  "description": "One MCP server merging codebase mapping (real AST for TS/JS/Python/Go/Rust + call graph), last-30-days research across 12 keyless sources with cross-source fusion, and reversible token compression with exact BPE counts.",
+  "author": "Antonio van Dijck",
+  "license": "MIT",
+  "homepage": "https://github.com/AntoniovanDijck/meshmind",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AntoniovanDijck/meshmind.git"
+  },
+  "tools": [
+    {
+      "name": "scan_local_codebase",
+      "description": "Dependency graph of a directory: files, symbols, import edges, and call graph. Real AST parsing (TS/JS via TypeScript compiler, Python/Go/Rust via ast-grep). Includes community clustering and structural analysis (hubs, cycles, orphans)."
+    },
+    {
+      "name": "export_codebase_graph",
+      "description": "Export the dependency graph as Mermaid diagram or JSON nodes+edges (D3/Obsidian-friendly)."
+    },
+    {
+      "name": "research_last_30_days",
+      "description": "Recency research from 12 keyless sources (HN, Reddit, GitHub, Lobsters, Bluesky, Stack Overflow, Lemmy, Dev.to, Mastodon, YouTube, …) with relevance reranking, deduping, entity extraction, and cross-source fusion."
+    },
+    {
+      "name": "get_optimized_context",
+      "description": "Reversible token compression with exact BPE counts, 7 composable algorithms (strip, whitespace, line-dedup, json-min, truncate, stopwords, summarize), and host-LLM abstractive summarization via MCP sampling."
+    },
+    {
+      "name": "retrieve_context",
+      "description": "Recover original uncompressed text from a compression ref (reversible cache)."
+    },
+    {
+      "name": "context_stats",
+      "description": "Cumulative session savings: compress calls, original vs crushed tokens, percent saved, cached refs."
+    }
+  ]
+}
