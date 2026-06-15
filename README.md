@@ -70,20 +70,64 @@ npm run test:network   # also exercises the live research sources
 Live network sources are **opt-in** (`RUN_NETWORK_TESTS=1`) so the default
 suite is deterministic and CI-safe.
 
-## Use in Cursor / Claude Code
+## Install in an MCP client
 
-Add to your MCP config (`~/.cursor/mcp.json` or Claude Code `mcp` settings):
+First clone & build, then point your client at the built server:
+
+```bash
+git clone https://github.com/AntoniovanDijck/meshmind.git
+cd meshmind
+npm install && npm run build
+```
+
+This produces the runnable server at `build/server.js`. In the snippets below,
+replace `/ABS/PATH/TO/meshmind` with the absolute path where you cloned it
+(run `pwd` in the repo to get it).
+
+MeshMind speaks stdio, so any MCP-compatible client works. The command is always
+the same — `node /ABS/PATH/TO/meshmind/build/server.js` — only the config
+location/format differs per client.
+
+**Claude Code** (CLI — registers it for you):
+
+```bash
+claude mcp add meshmind -- node /ABS/PATH/TO/meshmind/build/server.js
+```
+
+**Cursor** — `~/.cursor/mcp.json` (or `.cursor/mcp.json` in a project):
 
 ```json
 {
   "mcpServers": {
-    "meshmind": {
-      "command": "node",
-      "args": ["/Users/antonio/contextflow/build/server.js"]
-    }
+    "meshmind": { "command": "node", "args": ["/ABS/PATH/TO/meshmind/build/server.js"] }
   }
 }
 ```
+
+**Claude Desktop** — `claude_desktop_config.json` (macOS:
+`~/Library/Application Support/Claude/`, Windows: `%APPDATA%\Claude\`):
+
+```json
+{
+  "mcpServers": {
+    "meshmind": { "command": "node", "args": ["/ABS/PATH/TO/meshmind/build/server.js"] }
+  }
+}
+```
+
+**VS Code** (Copilot/MCP) — `.vscode/mcp.json`:
+
+```json
+{
+  "servers": {
+    "meshmind": { "type": "stdio", "command": "node", "args": ["/ABS/PATH/TO/meshmind/build/server.js"] }
+  }
+}
+```
+
+Any other MCP host (Codex, Gemini CLI, Windsurf, Zed, …) uses the same
+`command` + `args` pair in its own config format. See
+[`mcp.example.json`](mcp.example.json) for the canonical block.
 
 ## Architecture
 

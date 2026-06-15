@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "omni-context": {
-      "command": "node",
-      "args": ["/Users/antonio/contextflow/build/server.js"]
-    }
-  }
-}

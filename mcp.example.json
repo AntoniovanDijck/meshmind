@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "meshmind": {
+      "command": "node",
+      "args": ["/ABS/PATH/TO/meshmind/build/server.js"]
+    }
+  }
+}
