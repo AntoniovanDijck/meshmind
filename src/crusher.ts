@@ -18,6 +18,7 @@
 
 import { createHash } from "node:crypto";
 import { encode } from "gpt-tokenizer";
+import { putOriginal, getOriginal, cachedRefCount, recordCrush, readLifetime } from "./store.js";
 
 export type CrushMode = "code" | "web" | "auto";
 export type Algorithm =
@@ -40,6 +41,14 @@ export interface CrushOptions {
   summaryRatio?: number;
   /** store original for reversible retrieval (default true). */
   reversible?: boolean;
+  /** record a per-algorithm token breakdown in result.steps. */
+  trackSteps?: boolean;
+}
+
+export interface CrushStep {
+  algo: Algorithm;
+  tokens: number;
+  savedFromPrev: number;
 }
 
 export interface CrushResult {
@@ -53,6 +62,8 @@ export interface CrushResult {
   crushedTokens: number;
   savedTokens: number;
   savedPercent: number;
+  /** per-algorithm breakdown (only when trackSteps/preview requested). */
+  steps?: CrushStep[];
 }
 
 const DEFAULT_ALGOS: Algorithm[] = ["strip", "whitespace", "line-dedup", "json-min"];
@@ -304,32 +315,12 @@ function truncateKeep(text: string, maxLines: number, keepFirst: number, keepLas
 }
 
 /* ---- reversible store + stats ------------------------------------------ */
-interface StoreEntry {
-  original: string;
-  mode: "code" | "web";
-  at: string;
-}
-
 /**
- * Bounded LRU cache of originals for reversible retrieval. A Map preserves
- * insertion order, so the oldest key is the first key; on overflow we evict it.
- * Re-storing an existing ref refreshes its recency. Cap is configurable via the
- * MESHMIND_CACHE_MAX env var (default 500 entries).
+ * Originals + lifetime stats are persisted to disk via store.ts (survives
+ * restarts, LRU-bounded by MESHMIND_CACHE_MAX). A small in-memory counter
+ * tracks *this session* on top of the persisted lifetime totals.
  */
-const CACHE_MAX = Math.max(1, Number(process.env.MESHMIND_CACHE_MAX) || 500);
-const STORE = new Map<string, StoreEntry>();
-
-function cacheSet(ref: string, entry: StoreEntry): void {
-  if (STORE.has(ref)) STORE.delete(ref); // refresh recency
-  STORE.set(ref, entry);
-  while (STORE.size > CACHE_MAX) {
-    const oldest = STORE.keys().next().value; // first = least recently used
-    if (oldest === undefined) break;
-    STORE.delete(oldest);
-  }
-}
-
-const STATS = {
+const SESSION = {
   calls: 0,
   originalTokens: 0,
   crushedTokens: 0,
@@ -349,7 +340,7 @@ function refFor(text: string): string {
 
 /** Retrieve the original text for a crush ref, or null if unknown/evicted. */
 export function retrieve(ref: string): string | null {
-  return STORE.get(ref)?.original ?? null;
+  return getOriginal(ref);
 }
 
 export interface CrusherStats {
@@ -361,15 +352,65 @@ export interface CrusherStats {
   cachedRefs: number;
 }
 
-export function stats(): CrusherStats {
+export interface CrusherStatsReport {
+  session: CrusherStats;
+  lifetime: CrusherStats & { firstSeen: string; lastSeen: string };
+}
+
+function pct(orig: number, crushed: number): number {
+  return orig > 0 ? Math.round(((orig - crushed) / orig) * 1000) / 10 : 0;
+}
+
+export function stats(): CrusherStatsReport {
+  const refs = cachedRefCount();
+  const life = readLifetime();
   return {
-    calls: STATS.calls,
-    originalTokens: STATS.originalTokens,
-    crushedTokens: STATS.crushedTokens,
-    savedTokens: STATS.savedTokens,
-    savedPercent: STATS.savedPercent,
-    cachedRefs: STORE.size,
+    session: {
+      calls: SESSION.calls,
+      originalTokens: SESSION.originalTokens,
+      crushedTokens: SESSION.crushedTokens,
+      savedTokens: SESSION.savedTokens,
+      savedPercent: SESSION.savedPercent,
+      cachedRefs: refs,
+    },
+    lifetime: {
+      calls: life.calls,
+      originalTokens: life.originalTokens,
+      crushedTokens: life.crushedTokens,
+      savedTokens: life.originalTokens - life.crushedTokens,
+      savedPercent: pct(life.originalTokens, life.crushedTokens),
+      cachedRefs: refs,
+      firstSeen: life.firstSeen,
+      lastSeen: life.lastSeen,
+    },
   };
+}
+
+/* ---- single algorithm application -------------------------------------- */
+function applyAlgo(
+  text: string,
+  algo: Algorithm,
+  mode: "code" | "web",
+  opts: CrushOptions,
+): string {
+  switch (algo) {
+    case "strip":
+      return mode === "code" ? crushCode(text) : crushWeb(text);
+    case "whitespace":
+      return collapseWhitespace(text);
+    case "line-dedup":
+      return dedupeLines(text);
+    case "json-min":
+      return minifyJson(text);
+    case "truncate":
+      return truncateKeep(text, opts.maxLines ?? 200, opts.keepFirst ?? 40, opts.keepLast ?? 40);
+    case "stopwords":
+      return dropStopwords(text);
+    case "summarize":
+      return summarizeExtractive(text, opts.summaryRatio ?? 0.3);
+    default:
+      return text;
+  }
 }
 
 /* ---- main pipeline ------------------------------------------------------ */
@@ -378,44 +419,35 @@ export function crush(input: string, options: CrushMode | CrushOptions = "auto")
   const mode: "code" | "web" = !opts.mode || opts.mode === "auto" ? detectMode(input) : opts.mode;
   const algos = opts.algorithms ?? DEFAULT_ALGOS;
   const reversible = opts.reversible !== false;
+  const trackSteps = opts.trackSteps === true;
 
+  const originalTokens = countTokens(input);
   let text = input;
+  const steps: CrushStep[] = [];
+  let prevTokens = originalTokens;
+
   for (const algo of algos) {
-    switch (algo) {
-      case "strip":
-        text = mode === "code" ? crushCode(text) : crushWeb(text);
-        break;
-      case "whitespace":
-        text = collapseWhitespace(text);
-        break;
-      case "line-dedup":
-        text = dedupeLines(text);
-        break;
-      case "json-min":
-        text = minifyJson(text);
-        break;
-      case "truncate":
-        text = truncateKeep(text, opts.maxLines ?? 200, opts.keepFirst ?? 40, opts.keepLast ?? 40);
-        break;
-      case "stopwords":
-        text = dropStopwords(text);
-        break;
-      case "summarize":
-        text = summarizeExtractive(text, opts.summaryRatio ?? 0.3);
-        break;
+    text = applyAlgo(text, algo, mode, opts);
+    if (trackSteps) {
+      const t = countTokens(text.trim());
+      steps.push({ algo, tokens: t, savedFromPrev: Math.max(0, prevTokens - t) });
+      prevTokens = t;
     }
   }
   text = text.trim();
 
   const ref = refFor(input);
-  if (reversible) cacheSet(ref, { original: input, mode, at: new Date().toISOString() });
+  if (reversible) putOriginal(ref, { original: input, mode, at: new Date().toISOString() });
 
-  const originalTokens = estimateTokens(input);
-  const crushedTokens = estimateTokens(text);
+  const crushedTokens = countTokens(text);
 
-  STATS.calls++;
-  STATS.originalTokens += originalTokens;
-  STATS.crushedTokens += crushedTokens;
+  // session + persisted lifetime accounting (skip both for preview runs)
+  if (reversible) {
+    SESSION.calls++;
+    SESSION.originalTokens += originalTokens;
+    SESSION.crushedTokens += crushedTokens;
+    recordCrush(originalTokens, crushedTokens);
+  }
 
   return {
     ref,
@@ -427,9 +459,106 @@ export function crush(input: string, options: CrushMode | CrushOptions = "auto")
     originalTokens,
     crushedTokens,
     savedTokens: Math.max(0, originalTokens - crushedTokens),
-    savedPercent:
-      originalTokens > 0
-        ? Math.round(((originalTokens - crushedTokens) / originalTokens) * 1000) / 10
-        : 0,
+    savedPercent: pct(originalTokens, crushedTokens),
+    ...(trackSteps ? { steps } : {}),
+  };
+}
+
+/**
+ * Preview a crush without persisting a ref or touching stats. Always returns a
+ * per-algorithm `steps` breakdown so an agent can see *why* it landed where it
+ * did before committing.
+ */
+export function preview(input: string, options: CrushMode | CrushOptions = "auto"): CrushResult {
+  const opts: CrushOptions = typeof options === "string" ? { mode: options } : options;
+  return crush(input, { ...opts, reversible: false, trackSteps: true });
+}
+
+export interface BudgetResult extends CrushResult {
+  targetTokens: number;
+  hitBudget: boolean;
+  /** human-readable escalation log, one line per stage tried. */
+  escalation: string[];
+}
+
+/**
+ * "Tell me how many tokens I have; I'll get you there." Progressively escalates
+ * the pipeline until the output fits `targetTokens` (or we run out of moves):
+ *
+ *   stage 1  strip + whitespace + line-dedup + json-min   (lossless-ish)
+ *   stage 2  + stopwords                                  (prose filler)
+ *   stage 3  + summarize at shrinking ratios              (extractive)
+ *   stage 4  + truncate to a computed line budget         (hard cap)
+ *
+ * Stops at the first stage under budget. The final result is persisted (a real
+ * ref you can retrieve) unless reversible:false was passed.
+ */
+export function crushToBudget(
+  input: string,
+  targetTokens: number,
+  options: CrushMode | CrushOptions = "auto",
+): BudgetResult {
+  const opts: CrushOptions = typeof options === "string" ? { mode: options } : options;
+  const mode: "code" | "web" = !opts.mode || opts.mode === "auto" ? detectMode(input) : opts.mode;
+  const escalation: string[] = [];
+
+  const base: Algorithm[] = ["strip", "whitespace", "line-dedup", "json-min"];
+  const stages: Algorithm[][] = [base, [...base, "stopwords"], [...base, "stopwords", "summarize"]];
+
+  let chosen: CrushResult | null = null;
+  let winnerOpts: CrushOptions = { ...opts, mode };
+  for (const algos of stages) {
+    const stageOpts: CrushOptions = { ...opts, mode, algorithms: algos };
+    const r = crush(input, { ...stageOpts, reversible: false });
+    escalation.push(`[${algos.join(",")}] → ${r.crushedTokens} tok`);
+    chosen = r;
+    winnerOpts = stageOpts;
+    if (r.crushedTokens <= targetTokens) break;
+  }
+
+  // Stage 4: still over budget → truncate to a line count that fits. Estimate
+  // tokens-per-line, then iterate: token/line is uneven, so tighten the budget
+  // until the output is actually under target (bounded retries, hard floor).
+  if (chosen && chosen.crushedTokens > targetTokens) {
+    const algos: Algorithm[] = [
+      "strip",
+      "whitespace",
+      "line-dedup",
+      "json-min",
+      "summarize",
+      "truncate",
+    ];
+    const lines = chosen.text.split("\n");
+    const perLine = chosen.crushedTokens / Math.max(1, lines.length);
+    let lineBudget = Math.max(4, Math.floor(targetTokens / Math.max(0.5, perLine)));
+
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const keep = Math.max(1, Math.floor(lineBudget / 2));
+      winnerOpts = {
+        ...opts,
+        mode,
+        algorithms: algos,
+        maxLines: lineBudget,
+        keepFirst: keep,
+        keepLast: keep,
+      };
+      const r = crush(input, { ...winnerOpts, reversible: false });
+      escalation.push(`[+truncate maxLines=${lineBudget}] → ${r.crushedTokens} tok`);
+      chosen = r;
+      if (r.crushedTokens <= targetTokens || lineBudget <= 4) break;
+      // overshoot → shrink proportionally (plus a margin for the elision marker)
+      const ratio = targetTokens / Math.max(1, r.crushedTokens);
+      lineBudget = Math.max(4, Math.floor(lineBudget * ratio * 0.85));
+    }
+  }
+
+  // Re-run the exact winning pipeline once with persistence (so the ref is real).
+  const persisted = opts.reversible === false ? chosen! : crush(input, winnerOpts);
+
+  return {
+    ...persisted,
+    targetTokens,
+    hitBudget: persisted.crushedTokens <= targetTokens,
+    escalation,
   };
 }

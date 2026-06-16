@@ -46,10 +46,24 @@ request to the host client. The input text is sent to the host's configured LLM.
 If the client does not support sampling, MeshMind silently falls back to local
 extractive summarization — no data leaves the process.
 
+### Persistent reversible store (data at rest)
+
+As of v1.1, compressed originals are **persisted to disk** so a `ref` survives
+process restarts. Operators should be aware:
+
+- Originals are written under `MESHMIND_HOME` (default `~/.meshmind/originals/`)
+  as plain JSON files, readable by the running user. They are **not encrypted**.
+- This means text you compress — including anything sensitive you pass to
+  `get_optimized_context` / `crush_file` — is stored on local disk until evicted.
+- To opt out of persistence, set `MESHMIND_HOME` to a tmpfs/ephemeral path, or
+  clear `~/.meshmind` between sessions. If the directory is not writable, the
+  store fails soft to in-memory (originals never touch disk).
+- The store is **local only** — nothing is ever transmitted off-machine.
+
 ### Resource bounds
 
-- The reversible cache is an **LRU bounded** to `MESHMIND_CACHE_MAX` entries
-  (default 500) to prevent unbounded memory growth.
+- The reversible store is **LRU bounded** to `MESHMIND_CACHE_MAX` entries
+  (default 500), evicting the least-recently-used originals to cap disk/memory.
 - File scanning is capped by `maxFiles` (default 2000) and a per-file byte cap.
 
 ## Supported versions

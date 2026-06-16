@@ -1,6 +1,6 @@
 {
   "name": "meshmind",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "One MCP server merging codebase mapping (real AST for TS/JS/Python/Go/Rust + call graph), last-30-days research across 12 keyless sources with cross-source fusion, and reversible token compression with exact BPE counts.",
   "author": "Antonio van Dijck",
   "license": "MIT",
@@ -24,7 +24,11 @@
     },
     {
       "name": "get_optimized_context",
-      "description": "Reversible token compression with exact BPE counts, 7 composable algorithms (strip, whitespace, line-dedup, json-min, truncate, stopwords, summarize), and host-LLM abstractive summarization via MCP sampling."
+      "description": "Reversible token compression with exact BPE counts. Set targetTokens and it auto-escalates algorithms until output fits your budget; or pick from 7 composable algorithms (strip, whitespace, line-dedup, json-min, truncate, stopwords, summarize); preview=true shows a per-step breakdown without storing. Host-LLM abstractive summarization via MCP sampling."
+    },
+    {
+      "name": "crush_file",
+      "description": "Read a local file and compress it in one call, optionally to a token budget (targetTokens). Returns the compressed payload, exact BPE savings, and a reversible ref."
     },
     {
       "name": "retrieve_context",

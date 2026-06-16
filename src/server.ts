@@ -20,7 +20,17 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { promises as fs } from "node:fs";
 
-import { crush, retrieve, stats, countTokens, CrushMode, Algorithm } from "./crusher.js";
+import {
+  crush,
+  crushToBudget,
+  preview as previewCrush,
+  retrieve,
+  stats,
+  countTokens,
+  CrushMode,
+  Algorithm,
+  CrushResult,
+} from "./crusher.js";
 import { scanCodebase, renderMapSummary, exportMermaid, exportGraphJson } from "./mapper.js";
 import {
   research,
@@ -30,7 +40,7 @@ import {
   ALL_SOURCES,
 } from "./recency_engine.js";
 
-const server = new McpServer({ name: "meshmind", version: "1.0.0" });
+const server = new McpServer({ name: "meshmind", version: "1.1.0" });
 
 const SOURCE_ENUM = ALL_SOURCES as [Source, ...Source[]];
 const ALGO_ENUM = [
@@ -160,6 +170,15 @@ server.registerTool(
   },
 );
 
+/* ---- compression render helper ------------------------------------------ */
+function renderSteps(r: CrushResult): string {
+  if (!r.steps?.length) return "";
+  const lines = r.steps.map(
+    (s) => `  ${s.algo.padEnd(11)} → ${String(s.tokens).padStart(7)} tok  (-${s.savedFromPrev})`,
+  );
+  return "\nPer-step breakdown:\n" + lines.join("\n") + "\n";
+}
+
 /* ---- Tool 4: get_optimized_context -------------------------------------- */
 server.registerTool(
   "get_optimized_context",
@@ -167,12 +186,14 @@ server.registerTool(
     title: "Get optimized (compressed) context",
     description:
       "Reversible token-reduction pipeline. Accepts raw `text` OR a `filePath`. " +
-      "Composable algorithms: strip (comments/HTML), whitespace, line-dedup, " +
-      "json-min, truncate (first/last-K keep), stopwords, summarize (extractive). " +
-      "Set summarize=true for an abstractive summary via the host LLM (MCP " +
-      "sampling), with extractive as fallback. Returns the compressed payload, " +
-      "exact BPE savings, and a `ref` usable with retrieve_context to recover " +
-      "the original. Provide exactly one of `text` or `filePath`.",
+      "Three modes of use: (1) set `targetTokens` and MeshMind auto-escalates " +
+      "algorithms until the output fits your budget; (2) set explicit " +
+      "`algorithms`; (3) leave both for sensible defaults. Algorithms: strip, " +
+      "whitespace, line-dedup, json-min, truncate, stopwords, summarize. Set " +
+      "summarize=true for an abstractive summary via the host LLM (MCP " +
+      "sampling), extractive fallback. `preview=true` shows the per-step savings " +
+      "WITHOUT storing a ref. Returns compressed payload, exact BPE savings, and " +
+      "a `ref` for retrieve_context. Provide exactly one of `text` or `filePath`.",
     inputSchema: {
       text: z.string().optional().describe("Raw text/code/HTML to compress."),
       filePath: z.string().optional().describe("Local file to read and compress."),
@@ -180,18 +201,28 @@ server.registerTool(
         .enum(["code", "web", "auto"])
         .optional()
         .describe("Compression regime (default auto)."),
+      targetTokens: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Token budget — auto-escalate the pipeline until output fits."),
       algorithms: z
         .array(z.enum(ALGO_ENUM))
         .optional()
-        .describe("Override the algorithm pipeline."),
+        .describe("Override the algorithm pipeline (ignored if targetTokens set)."),
       maxLines: z.number().int().positive().optional().describe("truncate: line budget."),
       summarize: z
         .boolean()
         .optional()
         .describe("Abstractive summary via host LLM (sampling), extractive fallback."),
+      preview: z
+        .boolean()
+        .optional()
+        .describe("Show per-step savings without storing a ref or recording stats."),
     },
   },
-  async ({ text, filePath, mode, algorithms, maxLines, summarize }) => {
+  async ({ text, filePath, mode, targetTokens, algorithms, maxLines, summarize, preview }) => {
     if (!text && !filePath) return textContent("Error: provide either `text` or `filePath`.");
     let input = text ?? "";
     if (filePath) {
@@ -201,15 +232,38 @@ server.registerTool(
         return textContent(`Error reading ${filePath}: ${String((e as Error).message)}`);
       }
     }
+    const m = (mode ?? "auto") as CrushMode;
 
-    // Baseline crush. If summarize requested, append extractive summarize as the
-    // guaranteed local result.
+    // --- budget mode: auto-escalate to fit targetTokens ---
+    if (targetTokens) {
+      const b = crushToBudget(input, targetTokens, { mode: m, maxLines });
+      const verdict = b.hitBudget ? "✓ within budget" : "⚠ floor reached (still over)";
+      const header =
+        `[meshmind] budget=${targetTokens} tok → ${b.crushedTokens} tok ${verdict} | ` +
+        `${b.originalTokens}→${b.crushedTokens} (-${b.savedPercent}%) | ref=${b.ref}\n` +
+        `Escalation:\n  ${b.escalation.join("\n  ")}\n\n`;
+      return textContent(header + b.text);
+    }
+
+    // --- preview mode: per-step breakdown, no ref, no stats ---
+    if (preview) {
+      const algos = (algorithms as Algorithm[] | undefined) ?? undefined;
+      const p = previewCrush(input, { mode: m, algorithms: algos, maxLines });
+      const header =
+        `[meshmind] PREVIEW (not stored) mode=${p.mode} ` +
+        `${p.originalTokens}→${p.crushedTokens} tokens (-${p.savedPercent}%)\n` +
+        renderSteps(p) +
+        "\n";
+      return textContent(header + p.text);
+    }
+
+    // --- explicit/default pipeline ---
     const algos =
       (algorithms as Algorithm[] | undefined) ??
       (summarize
         ? (["strip", "whitespace", "line-dedup", "json-min", "summarize"] as Algorithm[])
         : undefined);
-    const r = crush(input, { mode: (mode ?? "auto") as CrushMode, algorithms: algos, maxLines });
+    const r = crush(input, { mode: m, algorithms: algos, maxLines });
 
     let body = r.text;
     let note = "";
@@ -238,6 +292,55 @@ server.registerTool(
   },
 );
 
+/* ---- Tool: crush_file (read + compress in one call) --------------------- */
+server.registerTool(
+  "crush_file",
+  {
+    title: "Crush a file to a token budget",
+    description:
+      "Shortcut for the common 'this file is too big to read' case: reads a " +
+      "local file and compresses it in one call. With `targetTokens`, " +
+      "auto-escalates the pipeline until it fits; otherwise applies the default " +
+      "lossless-ish pipeline. Returns the compressed payload, exact BPE savings, " +
+      "and a reversible `ref`.",
+    inputSchema: {
+      path: z.string().describe("Local file to read and compress."),
+      targetTokens: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Token budget — auto-escalate until output fits."),
+      mode: z
+        .enum(["code", "web", "auto"])
+        .optional()
+        .describe("Compression regime (default auto)."),
+    },
+  },
+  async ({ path: filePath, targetTokens, mode }) => {
+    let input: string;
+    try {
+      input = await fs.readFile(filePath, "utf8");
+    } catch (e) {
+      return textContent(`Error reading ${filePath}: ${String((e as Error).message)}`);
+    }
+    const m = (mode ?? "auto") as CrushMode;
+    if (targetTokens) {
+      const b = crushToBudget(input, targetTokens, { mode: m });
+      const verdict = b.hitBudget ? "✓ within budget" : "⚠ floor reached";
+      const header =
+        `[meshmind] ${filePath}: budget=${targetTokens} → ${b.crushedTokens} tok ${verdict} | ` +
+        `${b.originalTokens}→${b.crushedTokens} (-${b.savedPercent}%) | ref=${b.ref}\n\n`;
+      return textContent(header + b.text);
+    }
+    const r = crush(input, { mode: m });
+    const header =
+      `[meshmind] ${filePath}: ${r.originalTokens}→${r.crushedTokens} tokens ` +
+      `(-${r.savedPercent}%) | ref=${r.ref}\n\n`;
+    return textContent(header + r.text);
+  },
+);
+
 /* ---- Tool 5: retrieve_context ------------------------------------------- */
 server.registerTool(
   "retrieve_context",
@@ -260,8 +363,9 @@ server.registerTool(
   {
     title: "Compression stats",
     description:
-      "Return cumulative token-savings stats for this server session: total " +
-      "compress calls, original vs. crushed tokens, percent saved, cached refs.",
+      "Return token-savings stats: `session` (this process) and `lifetime` " +
+      "(persisted across restarts under MESHMIND_HOME) — compress calls, " +
+      "original vs. crushed tokens, percent saved, cached refs, first/last seen.",
     inputSchema: {},
   },
   async () => textContent(JSON.stringify(stats(), null, 2)),

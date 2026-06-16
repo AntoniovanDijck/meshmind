@@ -23,7 +23,13 @@ function pass(name: string, ok: boolean, detail = "") {
 }
 
 async function main() {
-  const transport = new StdioClientTransport({ command: process.execPath, args: [SERVER] });
+  // Isolate the server's persistent store in a temp dir.
+  const TEST_HOME = path.join(os.tmpdir(), `mm-itest-home-${process.pid}`);
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [SERVER],
+    env: { ...process.env, MESHMIND_HOME: TEST_HOME },
+  });
   const client = new Client({ name: "meshmind-test", version: "1.0.0" });
   await client.connect(transport);
 
@@ -31,10 +37,11 @@ async function main() {
   const names = tools.tools.map((t) => t.name).sort();
   console.log("\nRegistered tools:", names.join(", "), "\n");
   pass(
-    "six tools registered",
-    names.length >= 6 &&
+    "seven tools registered",
+    names.length >= 7 &&
       [
         "context_stats",
+        "crush_file",
         "export_codebase_graph",
         "get_optimized_context",
         "research_last_30_days",
@@ -202,13 +209,77 @@ export const z = 1;
     expOut.startsWith("graph LR") && expOut.includes("-->"),
   );
 
-  // --- context_stats ---
+  // --- get_optimized_context with targetTokens (budget mode) ---
+  const budgetText = Array.from(
+    { length: 300 },
+    (_, i) => `line ${i}: the quick brown fox jumps over the lazy dog repeatedly and verbosely`,
+  ).join("\n");
+  const budgetRes = await client.callTool({
+    name: "get_optimized_context",
+    arguments: { text: budgetText, targetTokens: 120 },
+  });
+  const budgetOut = firstText(budgetRes);
+  const budgetTok = Number(
+    (budgetOut.match(/→ (\d+) tok ✓/) || budgetOut.match(/→ (\d+) tok/) || [])[1],
+  );
+  pass(
+    "get_optimized_context honors targetTokens",
+    budgetOut.includes("budget=120") &&
+      budgetOut.includes("Escalation:") &&
+      budgetTok > 0 &&
+      budgetTok <= 120,
+    budgetOut.split("\n")[0],
+  );
+
+  // --- preview mode (per-step breakdown, no ref) ---
+  const prevRes = await client.callTool({
+    name: "get_optimized_context",
+    arguments: {
+      text: "// drop\n\n\nconst a = 1;\n\n\nconst b = 2;\n",
+      mode: "code",
+      preview: true,
+    },
+  });
+  const prevOut = firstText(prevRes);
+  pass(
+    "preview shows per-step breakdown without a ref",
+    prevOut.includes("PREVIEW (not stored)") &&
+      prevOut.includes("Per-step breakdown") &&
+      !prevOut.includes("ref=cf_"),
+    prevOut.split("\n")[0],
+  );
+
+  // --- crush_file (read + compress in one call, to a budget) ---
+  const tmpFile = path.join(os.tmpdir(), `mm-crushfile-${process.pid}.log`);
+  await fs.writeFile(
+    tmpFile,
+    Array.from({ length: 200 }, (_, i) => `2026-06-16 ERROR retry ${i} connection timed out`).join(
+      "\n",
+    ),
+  );
+  const cfRes = await client.callTool({
+    name: "crush_file",
+    arguments: { path: tmpFile, targetTokens: 60 },
+  });
+  const cfOut = firstText(cfRes);
+  pass(
+    "crush_file reads + compresses to budget + returns ref",
+    cfOut.includes("budget=60") && cfOut.includes("ref=cf_") && cfOut.includes(tmpFile),
+    cfOut.split("\n")[0],
+  );
+  await fs.rm(tmpFile, { force: true });
+
+  // --- context_stats (session + lifetime) ---
   const statRes = await client.callTool({ name: "context_stats", arguments: {} });
   const statOut = JSON.parse(firstText(statRes));
   pass(
-    "context_stats tracks cumulative savings",
-    statOut.calls >= 3 && statOut.cachedRefs >= 1 && typeof statOut.savedPercent === "number",
-    `calls=${statOut.calls} saved=${statOut.savedPercent}% refs=${statOut.cachedRefs}`,
+    "context_stats reports session + lifetime savings",
+    statOut.session?.calls >= 3 &&
+      statOut.session?.cachedRefs >= 1 &&
+      typeof statOut.session?.savedPercent === "number" &&
+      typeof statOut.lifetime?.calls === "number" &&
+      typeof statOut.lifetime?.firstSeen === "string",
+    `session.calls=${statOut.session?.calls} lifetime.calls=${statOut.lifetime?.calls}`,
   );
 
   // --- research_last_30_days (live; opt-in via RUN_NETWORK_TESTS=1) ---
@@ -252,6 +323,7 @@ export const z = 1;
     }
 
   await client.close();
+  await fs.rm(TEST_HOME, { recursive: true, force: true }).catch(() => {});
   console.log(process.exitCode ? "\nSome tests failed.\n" : "\nAll tests passed.\n");
 }
 

@@ -36,11 +36,15 @@ Agent:  Researched 12 sources (847 results → 42 after fusion + dedup)
 ```
 
 ```
-You:    "This log file is 8k lines — compress it before reading."
+You:    "I have ~400 tokens of room left. Crush this 8k-line log to fit."
 
-Agent:  get_optimized_context → line-dedup + truncate
-        8,143 tokens → 1,204 tokens  (85% saved)
-        ref: cf_a3f9… (retrieve anytime to get the original back)
+Agent:  crush_file → targetTokens=400 (auto-escalation)
+        [strip,whitespace,line-dedup,json-min]      → 6,210 tok
+        [+stopwords]                                → 4,980 tok
+        [+summarize]                                → 1,520 tok
+        [+truncate maxLines=44]                     →   353 tok  ✓
+        53,000 tokens → 353 tokens  (-99.3%)
+        ref: cf_a3f9… (persisted — retrieve anytime, even tomorrow)
 ```
 
 ---
@@ -187,23 +191,36 @@ graph LR
 
 ### `get_optimized_context`
 
-`{ text? | filePath?, mode?, algorithms?, maxLines?, summarize? }` — reversible compression.
+`{ text? | filePath?, mode?, targetTokens?, algorithms?, maxLines?, summarize?, preview? }` — reversible compression.
 
-- Returns: compressed text + `ref` + exact BPE token counts + `savedPercent`
+**Three ways to drive it:**
+- **Budget mode** — set `targetTokens` and MeshMind auto-escalates the pipeline (lossless-ish → stopwords → summarize → truncate) until the output fits. Returns an escalation log so you see how it got there.
+- **Explicit** — pick your own `algorithms`.
+- **Default** — leave both for the sensible lossless-ish pipeline.
+
+Other options:
 - **Algorithms (composable):** `strip` · `whitespace` · `line-dedup` · `json-min` · `truncate` · `stopwords` · `summarize`
 - **Modes:** `code` · `web` · `auto`
 - `summarize: true` — delegates to host LLM via MCP sampling; falls back to local extractive
+- `preview: true` — per-step savings breakdown **without** storing a ref or touching stats
 
-**Example output:**
-```json
-{
-  "ref": "cf_a3f9b2…",
-  "originalTokens": 8143,
-  "crushedTokens": 1204,
-  "savedPercent": 85.2,
-  "text": "…compressed content…"
-}
+**Example output (budget mode):**
 ```
+[meshmind] budget=400 tok → 353 tok ✓ within budget | 52999→353 (-99.3%) | ref=cf_a3f9…
+Escalation:
+  [strip,whitespace,line-dedup,json-min] → 6210 tok
+  [+stopwords]                           → 4980 tok
+  [+stopwords,summarize]                 → 1520 tok
+  [+truncate maxLines=44]                →  353 tok
+```
+
+---
+
+### `crush_file`
+
+`{ path, targetTokens?, mode? }` — read a file and compress it in one call.
+
+The shortcut for "this file is too big to read." With `targetTokens`, auto-escalates until it fits; otherwise applies the default pipeline. Returns compressed payload + exact BPE savings + a reversible `ref`.
 
 ---
 
@@ -211,21 +228,18 @@ graph LR
 
 `{ ref }` — recover the original uncompressed text from a `ref`.
 
-LRU-bounded cache (default 500 entries). Tune via `MESHMIND_CACHE_MAX` env var.
+**Persistent:** refs are stored on disk under `MESHMIND_HOME` (default `~/.meshmind`), so you can retrieve a blob you compressed in a previous session — even after a restart. LRU-bounded (default 500 entries; tune via `MESHMIND_CACHE_MAX`).
 
 ---
 
 ### `context_stats`
 
-`{}` — cumulative session savings.
+`{}` — token savings, both **session** (this process) and **lifetime** (persisted across restarts).
 
 ```json
 {
-  "calls": 14,
-  "originalTokens": 84200,
-  "crushedTokens": 12300,
-  "savedPercent": 85.4,
-  "cachedRefs": 14
+  "session":  { "calls": 14, "originalTokens": 84200, "crushedTokens": 12300, "savedPercent": 85.4, "cachedRefs": 312 },
+  "lifetime": { "calls": 1840, "originalTokens": 9_400_000, "crushedTokens": 1_900_000, "savedPercent": 79.8, "cachedRefs": 312, "firstSeen": "2026-05-01T…", "lastSeen": "2026-06-16T…" }
 }
 ```
 
@@ -304,6 +318,34 @@ Then point the client at `node /ABS/PATH/TO/meshmind/build/server.js`.
 
 ---
 
+## Benchmarks
+
+Real numbers from `npm run benchmark` (Node 22, Apple Silicon) on representative
+payloads — not mocked. **Default pipeline** is deliberately conservative
+(lossless-ish: strip/whitespace/line-dedup/json-min):
+
+| Fixture | Orig tokens | Crushed | Saved | Time |
+|---|---:|---:|---:|---:|
+| HTML listing (1k rows) | 37,091 | 7,001 | **81.1%** | 5 ms |
+| Source code (this repo) | 28,194 | 22,745 | 19.3% | 20 ms |
+| Verbose log (2k lines) | 52,999 | 45,399 | 14.3% | 26 ms |
+| JSON array (2k objects) | 149,998 | 146,002 | 2.7% | 33 ms |
+| RAG concat (200 chunks) | 18,000 | 17,800 | 1.1% | 5 ms |
+
+The default pipeline only removes provably-safe noise — that's why structured
+JSON and near-duplicate prose barely move. **Budget mode** is where the savings
+live: it escalates through lossy stages until your target is hit.
+
+| Target | Result | Hit? | Time |
+|---:|---:|:---:|---:|
+| 2,000 | 1,715 | ✓ | 132 ms |
+| 1,000 | 868 | ✓ | 130 ms |
+| 400 | 353 | ✓ | 131 ms |
+| 150 | 126 | ✓ | 113 ms |
+
+*(52,999-token verbose log → any budget you ask for.)* Reproduce with
+`npm run benchmark`.
+
 ## Build & test
 
 ```bash
@@ -311,6 +353,7 @@ npm install
 npm run build          # tsc → build/
 npm test               # offline: unit tests + MCP integration (no network)
 npm run test:network   # also exercises the live research sources
+npm run benchmark      # reproduce the compression benchmarks above
 ```
 
 Live network sources are **opt-in** (`RUN_NETWORK_TESTS=1`) so the default suite is deterministic and CI-safe.
@@ -321,11 +364,13 @@ Live network sources are **opt-in** (`RUN_NETWORK_TESTS=1`) so the default suite
 
 ```
 src/
-  crusher.ts          # compression pipeline + reversible cache     ← headroom
+  crusher.ts          # compression pipeline + budget escalation    ← headroom
+  store.ts            # persistent reversible store + lifetime stats
   mapper.ts           # collect → extract → graph → cluster/analyze ← graphify
   astgrep.ts          # multi-language AST (Python/Go/Rust)         ← graphify
   recency_engine.ts   # parallel keyless source fetchers + fusion   ← last30days
-  server.ts           # MCP server: registers the 6 tools
+  server.ts           # MCP server: registers the 7 tools
+  benchmark.ts        # reproducible compression benchmarks
   test-unit.ts        # deterministic offline unit tests
   test-client.ts      # MCP integration tests over stdio
 ```
@@ -343,7 +388,7 @@ No. Every research source is keyless/public, and compression + mapping are fully
 TS/JS/TSX/JSX via the TypeScript compiler API. Python, Go, Rust via ast-grep (tree-sitter). Everything else falls back to regex. The summary's `ast=N` tells you how many files got a real AST.
 
 **Is the compression lossy? Can I get the original back?**
-Lossy steps exist (strip, dedupe, summarize), but every compression is stored under a `ref`. Call `retrieve_context` with that `ref` to recover the exact original (LRU-bounded, default 500 entries — tune via `MESHMIND_CACHE_MAX`).
+Lossy steps exist (strip, dedupe, summarize), but every compression is stored under a `ref`. Call `retrieve_context` with that `ref` to recover the exact original. Refs are **persisted to disk** under `MESHMIND_HOME` (default `~/.meshmind`), so they survive restarts — retrieve a blob you compressed yesterday. LRU-bounded (default 500 entries — tune via `MESHMIND_CACHE_MAX`). If the disk is unavailable, the store falls back to in-memory for the session.
 
 **A research source returned nothing / errored.**
 Sources are fail-soft: a blocked or rate-limited source returns nothing instead of crashing the run. The result lists per-source errors so you know what was skipped.

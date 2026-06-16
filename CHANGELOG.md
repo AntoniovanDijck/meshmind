@@ -8,6 +8,37 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 _Nothing yet._
 
+## [1.1.0] - 2026-06-16
+
+Compression-first release. Token compression is now the headline capability,
+with persistence, a budget interface, and real benchmarks.
+
+### Added
+
+- **Persistent reversible store** (`src/store.ts`) — originals and lifetime
+  savings now persist to disk under `MESHMIND_HOME` (default `~/.meshmind`), so
+  a `ref` survives process restarts and stats accumulate across sessions.
+  Dependency-free (plain JSON files), LRU-bounded, and fail-soft to in-memory if
+  the disk is unavailable.
+- **Token-budget mode** — `get_optimized_context` and `crush_file` accept
+  `targetTokens`; MeshMind progressively escalates the pipeline (lossless-ish →
+  stopwords → summarize → truncate) until the output fits, and reports the
+  escalation log. "Tell it how many tokens you have; it gets you there."
+- **`crush_file` tool** — read a file and compress it (optionally to a budget)
+  in a single call.
+- **Preview mode** — `preview: true` returns a per-algorithm savings breakdown
+  without storing a ref or touching stats.
+- **`context_stats` now reports `session` + `lifetime`** totals (calls, tokens,
+  percent saved, cached refs, first/last seen).
+- **Benchmark harness** (`npm run benchmark`) — reproducible compression
+  benchmarks on representative payloads (logs, JSON, HTML, source, RAG) with
+  exact BPE tokens, percent saved, timings, and budget-mode accuracy.
+
+### Changed
+
+- `stats()` now returns `{ session, lifetime }` instead of a flat object.
+- Server version bumped to 1.1.0; tool count is now 7.
+
 ## [1.0.0] - 2026-06-15
 
 Initial public release — [`meshmind` on npm](https://www.npmjs.com/package/meshmind).

@@ -6,11 +6,17 @@
 
 import os from "node:os";
 import path from "node:path";
-import { promises as fs } from "node:fs";
+import { promises as fs, existsSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { crush, retrieve, stats, countTokens, crushCode, crushWeb } from "./crusher.js";
-import { scanCodebase, exportMermaid } from "./mapper.js";
+// Isolate the persistent store in a temp dir so tests never touch the real
+// ~/.meshmind and stay deterministic. Must be set before crusher/store run.
+const TEST_HOME = path.join(os.tmpdir(), `mm-test-home-${process.pid}`);
+process.env.MESHMIND_HOME = TEST_HOME;
+
+const { crush, crushToBudget, preview, retrieve, stats, countTokens, crushCode, crushWeb } =
+  await import("./crusher.js");
+const { scanCodebase, exportMermaid } = await import("./mapper.js");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -80,10 +86,58 @@ async function main() {
     big.savedPercent >= 0 && big.crushedTokens <= big.originalTokens,
   );
 
-  // --- LRU cache bound (set env before import won't help; test relative behavior) ---
-  const before = stats().cachedRefs;
-  crush("unique-" + Date.now(), { mode: "web" });
-  pass("cache grows + stats tracks", stats().cachedRefs >= before && stats().calls > 0);
+  // --- persistent store: ref grows + session stats track ---
+  const before = stats().session.cachedRefs;
+  const persistRes = crush("unique-persist-" + Date.now(), { mode: "web" });
+  pass(
+    "cache grows + session stats track",
+    stats().session.cachedRefs >= before && stats().session.calls > 0,
+  );
+
+  // --- persistence: original lives on disk + survives a fresh module read ---
+  pass(
+    "original persisted to disk under MESHMIND_HOME",
+    existsSync(path.join(TEST_HOME, "originals", `${persistRes.ref}.json`)),
+  );
+  // re-import the store module fresh (simulates a new process) and retrieve
+  const freshStore = await import(`./store.js?fresh=${Date.now()}`);
+  pass(
+    "ref retrievable after simulated restart",
+    freshStore.getOriginal(persistRes.ref)?.startsWith("unique-persist-") === true,
+  );
+
+  // --- lifetime stats accumulate + carry timestamps ---
+  const life = stats().lifetime;
+  pass(
+    "lifetime stats accumulate",
+    life.calls >= stats().session.calls && typeof life.firstSeen === "string",
+    `lifetime.calls=${life.calls}`,
+  );
+
+  // --- budget mode: escalates to fit a token budget ---
+  const bigLog = Array.from({ length: 400 }, (_, i) =>
+    i % 3 === 0 ? "ERROR connection refused" : `event ${i} processed ok at node-${i % 7}`,
+  ).join("\n");
+  const budget = crushToBudget(bigLog, 80, { mode: "code" });
+  pass(
+    "crushToBudget fits the token budget",
+    budget.hitBudget && budget.crushedTokens <= 80,
+    `${budget.originalTokens}→${budget.crushedTokens} tok, stages=${budget.escalation.length}`,
+  );
+  pass("crushToBudget returns a real ref", retrieve(budget.ref) === bigLog);
+
+  // --- preview: per-step breakdown, no ref stored, no stats change ---
+  const refsBefore = stats().session.cachedRefs;
+  const callsBefore = stats().session.calls;
+  const prev = preview("// c\n\n\nconst a=1;\n\n\nconst b=2;\n", { mode: "code" });
+  pass(
+    "preview returns per-step breakdown",
+    Array.isArray(prev.steps) && prev.steps.length > 0 && prev.steps[0].algo === "strip",
+  );
+  pass(
+    "preview does not store a ref or touch stats",
+    stats().session.cachedRefs === refsBefore && stats().session.calls === callsBefore,
+  );
 
   // --- mapper: scan this project's src (offline) ---
   const map = await scanCodebase(__dirname.replace(/build$/, "src"));
@@ -110,6 +164,12 @@ async function main() {
 
   // --- mermaid export ---
   pass("exportMermaid produces graph", exportMermaid(map).startsWith("graph LR"));
+
+  try {
+    rmSync(TEST_HOME, { recursive: true, force: true });
+  } catch {
+    /* best-effort cleanup */
+  }
 
   console.log(failures ? `\n${failures} unit test(s) failed.\n` : "\nAll unit tests passed.\n");
   if (failures) process.exit(1);

@@ -1,6 +1,6 @@
 {
   "name": "meshmind",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "MeshMind — a single MCP server that merges local codebase mapping, recency research, and token compression for AI agents.",
   "type": "module",
   "bin": {
@@ -23,7 +23,8 @@
     "prepublishOnly": "npm run build",
     "lint": "eslint \"src/**/*.ts\"",
     "format": "prettier --write \"src/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\""
+    "format:check": "prettier --check \"src/**/*.ts\"",
+    "benchmark": "node build/benchmark.js"
   },
   "keywords": [
     "mcp",
